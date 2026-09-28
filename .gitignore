@@ -1,13 +1,13 @@
-# Private client data & screenshots
+# Private client data & local test directories
 .vzor_dat/
 vzor dat/
 data/
 private/
 reports/
 *.md.backup
-REPORT_*.md
+/REPORT_*.md
 
-# Media & archives
+# Media & archives (prevents accidental screenshot commits)
 *.png
 *.jpg
 *.jpeg
@@ -15,6 +15,12 @@ REPORT_*.md
 *.gif
 *.zip
 *.tar.gz
+
+# Python cache & test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 
 # OS & Editor files
 .DS_Store

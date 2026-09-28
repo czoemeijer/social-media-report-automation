@@ -1,206 +1,114 @@
 ---
 name: social-report-audit
-description: >-
-  Aktivuj tento skill kdykoliv uživatel zmíní "audit reportu", "vytvoř report", požádá o klientský report pro sociální sítě (Instagram, Facebook apod.), vloží sadu metrik nebo dodá složky se screenshoty statistik (i s rozpadem podle jednotlivých tvůrců/creatorů). Zajišťuje extrakci dat ze screenshotů, mapování na standardní metriky, validaci, agregaci, výpočet sekundárních ukazatelů a vygenerování věcného markdown reportu.
+description: Extract social media metrics from screenshots or raw data, validate engagement numbers, audit inconsistencies, calculate derived engagement rates, and generate structured campaign reports. Use when asked to audit or create social media reports, process Instagram/Facebook Insights, or analyze campaign metrics.
 ---
 
 # Social Media Report & Audit Skill (`social-report-audit`)
 
-Tento skill slouží k auditování a vytváření pravidelných, profesionálních a konzistentně strukturovaných reportů pro klienty na sociálních sítích (Instagram, Facebook). Umožňuje zadat aktuální metriky ve volném/zkratkovitém formátu, nebo je vytáhnout přímo ze screenshotů statistik, a okamžitě vygenerovat hotový analytický výstup – včetně rozpadu podle jednotlivých tvůrců.
+This skill audits, validates, normalizes, and reports social media campaign metrics from Instagram and Facebook. It accepts raw numbers, platform UI screenshots, or creator folders, audits discrepancies, computes deterministic engagement indicators, and outputs structured Markdown reports.
 
 ---
 
-## 🎯 Spouštěcí podmínky (Triggery)
+## 1. Activation Triggers
 
-Aktivuj tento skill automaticky, pokud:
-
-- Uživatel zmíní fráze jako **„audit reportu“**, **„vytvoř report“**, **„report pro klienta“**.
-- Uživatel zadá sadu metrik obsahující zobrazení, dosah, interakce či engagement rate (i zkratkovitě).
-- Uživatel vloží složku/soubory se screenshoty statistik Instagramu nebo Facebooku ke zpracování.
-
----
-
-## 📁 Struktura vstupních dat (při práci se soubory/screenshoty)
-
-Skill očekává vstupní data organizovaná takto:
-
-```
-[Název reportu]/
-  ├── [Tvůrce 1]/
-  │     ├── screenshot_insights_1.png
-  │     ├── screenshot_insights_2.png
-  │     └── ...
-  ├── [Tvůrce 2]/
-  │     ├── screenshot_insights_1.png
-  │     └── ...
-  └── ...
-```
-
-- **Název nadřazené složky** = název reportu / kampaně / klienta (použij v nadpisu výsledného reportu).
-- **Každá podsložka** = jeden tvůrce/creator – jeho jméno použij jako identifikátor v tabulce.
-- Uvnitř podsložky tvůrce mohou být screenshoty statistik (Instagram Insights, Facebook/Meta Business Suite), případně i .csv/.xlsx exporty.
-- Pokud uživatel zadá data ručně (bez souborů), přeskoč extrakci ze screenshotů a použij přímo zadaná čísla.
+Activate this skill when the user:
+- Requests an audit or report for social media performance (Instagram, Facebook).
+- Supplies screenshots of platform insights (Instagram Insights, Meta Business Suite).
+- Provides raw social metrics (Views, Reach, Likes, Comments, Shares, Saves, ER).
+- Asks to compare influencer/creator campaign outputs or verify engagement calculations.
 
 ---
 
-## 📊 Pevná struktura standardních metrik
+## 2. Source-of-Truth Hierarchy
 
-Skill povinně rozpoznává a mapuje vstupní data (ať už textová nebo ze screenshotů) na následující standardní metriky:
+When evaluating conflicting data points or auditing past campaign materials, follow this strict priority hierarchy:
 
-1. **Views (Zobrazení / Přehrání)**
-2. **Saves (Uložení)**
-3. **Reach (Dosah / Oslovené účty)** – často zadáváno s předponou `cca X` nebo `~X`
-4. **Likes (To se mi líbí / Reakce)**
-5. **Comments (Komentáře)**
-6. **Shares / reposts (Sdílení a přeposlání)**
-7. **Engagement rate (Míra zapojení v %)** – často zadáváno jako `cca X %`
+1. **Tier 1: Original Screenshots / Native Platform CSV/JSON Exports (Highest Authority)**
+2. **Tier 2: Explicit Raw Metrics Provided Directly by User**
+3. **Tier 3: Client Presentation Decks / Native Campaign Summaries**
+4. **Tier 4: Derived / Generated Audit Reports (Lowest Authority — Output, Never Input)**
 
----
+*Rule:* Generated reports are outputs. Never use a past report to overwrite or "correct" raw screenshot evidence. If sources conflict, document the discrepancy and prefer Tier 1.
 
-## 📸 Extrakce dat ze screenshotů (Instagram / Facebook)
-
-### Rozpoznávání zdroje screenshotu
-
-Před extrakcí dat rozpoznej, ze které platformy screenshot pochází, podle vizuálních prvků UI:
-- **Instagram Insights** – sekce „Zobrazení", „Interakce s obsahem", „Návštěvy profilu", zaoblené karty, Instagram styl.
-- **Facebook Insights / Meta Business Suite** – modré UI prvky, terminologie „Dosah", „Interakce", „Zhlédnutí".
-
-### Mapování terminologie platforem na standardní metriky
-
-| Zobrazeno na screenshotu (CZ/EN) | Namapuj na standardní metriku |
-|---|---|
-| Zobrazení / Views / Přehrání | Views |
-| Uložení / Saves | Saves |
-| Dosah / Reach / Oslovené účty | Reach |
-| Líbí se mi / Likes / Reakce | Likes |
-| Komentáře / Comments | Comments |
-| Sdílení / Přeposlání / Shares | Shares / reposts |
-| Míra zapojení / Engagement rate | Engagement rate |
-
-### Pravidla pro čtení ze screenshotů
-
-1. **Čti čísla přesně tak, jak jsou zobrazená** – včetně zkratek (např. „11,5 tis." = 11 500; „15,02 tis." = 15 020).
-2. **Pokud je číslo částečně useknuté, rozmazané nebo nejisté**, neodhaduj – označ metriku jako nejistou a v reportu na to upozorni („hodnota nebyla čitelná, ověřte prosím ručně").
-3. **Pokud jeden tvůrce dodal víc screenshotů ze stejného příspěvku** (různé záložky statistik), slouč je do jedné sady metrik pro daný příspěvek, nikde nepočítej duplicitně.
-4. **Pokud screenshot obsahuje víc příspěvků najednou** (přehledová obrazovka), rozděl data podle jednotlivých příspěvků, pokud jsou rozlišitelné, jinak agreguj jako „souhrn za období".
-5. **Pokud jeden tvůrce má víc příspěvků/screenshotů celkem**, sečti/agreguj hodnoty za daného tvůrce (u ER počítej vážený průměr podle reach, ne prostý průměr).
+For detailed schema and provenance guidelines, consult [references/DATA_MODEL.md](references/DATA_MODEL.md).
 
 ---
 
-## ⚙️ Postup zpracování dat a logika výpočtů
+## 3. Extraction & OCR Safety Rules
 
-### 1. Parsování a mapování
+When extracting metrics from platform screenshots:
 
-- Přijmi vstupní čísla v libovolném volném či zkráceném formátu (např. `views 15.02k, saves 9, reach cca 11.5k, likes 398, comm 28, shares 2, ER 3.8%`) nebo je vytáhni ze screenshotů dle pravidel výše.
-- Namapuj hodnoty na 7 pevných standardních metrik.
-- **Detekce chybějících metrik:** Pokud některá z klíčových metrik chybí nebo je nečitelná, explicitně na to v reportu upozorni a doplňkové výpočty závislé na této metrice označ jako nedostupné.
-
-### 2. Výpočet doplňkových ukazatelů a audit dat
-
-- **Celkové interakce:** $\text{Likes} + \text{Comments} + \text{Shares/reposts} + \text{Saves}$
-- **Audit Engagement Rate (vypočteno z Reach):**
-  $$
-  \text{ER (z Reach)} = \frac{\text{Celkové interakce}}{\text{Reach}} \times 100
-  $$
-  *Pokud se zadané ER liší od vypočteného, uveď v poznámce kontrolní přepočet.*
-- **Saves / Reach ratio (%):** $\frac{\text{Saves}}{\text{Reach}} \times 100$ *(indikátor hodnoty a uložitelnosti obsahu)*
-- **Comments / Likes ratio (%):** $\frac{\text{Comments}}{\text{Likes}} \times 100$ *(indikátor hloubky diskuse a komunitní odezvy)*
-
-### 3. Porovnání s předchozím obdobím (pokud je k dispozici)
-
-- Pokud jsou k dispozici historická data:
-  $$
-  \text{Trend (\%)} = \frac{\text{Aktuální} - \text{Předchozí}}{\text{Předchozí}} \times 100
-  $$
-- Vyjádři změnu s vizuálním označením směru (např. `+15,4 % ↗` nebo `-8,2 % ↘`).
+1. **Exact vs. Approximate Reading:**
+   - If an exact number is displayed (e.g., `1,225`), record `1,225`. Never round to `~1,100`.
+   - If a number uses abbreviation notation (e.g., `cca 11,5 tis.`, `1.1k`), mark the value as **approximate** (`~11,500`, `~1,100`).
+2. **Unreadable / Cropped Figures:**
+   - Do **not** guess missing, truncated, or blurred numbers. Mark them as `Unreadable / Not available`.
+3. **Tab & Post Deduplication:**
+   - Distinguish multiple tabs of the same post (e.g., *Přehled*, *Projevený zájem*, *Okruh uživatelů*) from separate posts.
+   - Merge complementary metrics belonging to the same post ID/timestamp without double-counting.
 
 ---
 
-## 📝 Struktura výstupního Markdown reportu
+## 4. Scope Classification: Organic vs. Paid Media
 
-### A) Report za jednoduchou sadu metrik (bez rozpadu na tvůrce)
+Always classify each extracted data point into its appropriate domain:
 
-```markdown
-# Report výkonu: [Název profilu / Klienta] – [Období / Datum]
+- **Organic Creator Content:** Views, Organic Reach, Likes, Comments, Shares/reposts, Saves, Creator ER.
+- **Paid Media / Boosted Posts:** Paid Impressions, Paid Reach, Link Clicks, Media Spend, CPM, CPC, CTR, Ad Engagement.
 
-## 1. Tabulka metrik
-
-| Metrika | Aktuální hodnota | Předchozí období | Rozdíl / Trend | Poznámka |
-| :--- | :--- | :--- | :--- | :--- |
-| **Views (Zobrazení)** | ... | [předchozí] | [trend %] | Celkový počet zobrazení |
-| **Reach (Dosah)** | ... | [předchozí] | [trend %] | Unikátní oslovené účty |
-| **Likes (To se mi líbí)** | ... | [předchozí] | [trend %] | Přímé pozitivní reakce |
-| **Comments (Komentáře)** | ... | [předchozí] | [trend %] | Komentáře pod příspěvky |
-| **Shares / reposts** | ... | [předchozí] | [trend %] | Sdílení dalším uživatelům |
-| **Saves (Uložení)** | ... | [předchozí] | [trend %] | Uložení do záložek |
-| **Engagement rate** | ... | [předchozí] | [trend %] | Vypočteno z Reach |
-
-### Doplňkové ukazatele
-- **Celkový počet interakcí:** [Součet]
-- **Míra uložení (Saves / Reach):** [X,XX %]
-- **Poměr komentářů k lajkům (Comments / Likes):** [X,XX %]
+*Rules:*
+- **Never** use Paid Reach as the denominator for Organic Engagement Rate.
+- **Never** mix Paid Ad Engagements into Organic Known Engagement Actions.
+- If scope is unknown or mixed, clearly label it `Scope: Unknown / Mixed` and keep it separate.
 
 ---
 
-## 2. Věcná interpretace výkonu
-[2–4 věcné věty hodnotící výkon bez prázdných superlativů.]
+## 5. Deterministic Calculation Rules
 
-## 3. Porovnání s předchozím obdobím
-[Stručný odstavec, nebo: *Data za předchozí období nebyla poskytnuta.*]
-
-## 4. Doporučení a pozorování pro klienta
-1. **[Pozorování 1]:** ...
-2. **[Doporučení 2]:** ...
-3. **[Doporučení 3]:** ...
+Whenever Python execution is available, use the bundled calculation script:
+```bash
+python3 skills/social-report-audit/scripts/calculate_metrics.py input.json
 ```
 
-### B) Report se screenshoty a rozpadem podle tvůrců
+### Core Formulas:
+1. **Known Engagement Actions:**
+   $$\text{Known Engagement Actions} = \text{Likes} + \text{Comments} + \text{Shares} + \text{Saves}$$
+2. **Calculated ER by Reach:**
+   $$\text{Calculated ER by Reach} = \frac{\text{Known Engagement Actions}}{\text{Reach}} \times 100$$
+   *If Reach is approximate, flag the calculated ER as approximate (e.g., `≈ 3.80%`).*
+3. **Save Rate:**
+   $$\text{Save Rate} = \frac{\text{Saves}}{\text{Reach}} \times 100$$
+4. **Comment-to-Like Ratio:**
+   $$\text{Comment-to-Like Ratio} = \frac{\text{Comments}}{\text{Likes}} \times 100$$
+   *If Likes = 0, output `N/A`.*
 
-```markdown
-# Report výkonu: [Název reportu] – [Období]
+### Discrepancy Auditing (Known Actions vs. Platform Interactions):
+If Meta reports a higher composite "Interactions" total than $\text{Likes} + \text{Comments} + \text{Shares} + \text{Saves}$:
+- Report both figures distinctly.
+- Categorize the difference as `Uncategorized Platform Interactions` (representing sticker taps, profile visits, or link clicks).
+- Never silently force the composite total into the standard four-component engagement sum.
 
-## Souhrn za všechny tvůrce
-[souhrnná tabulka metrik + doplňkové ukazatele, agregováno přes všechny tvůrce]
-
-## Výkon podle tvůrců
-
-### [Jméno tvůrce 1]
-[tabulka metrik tohoto tvůrce + poznámky k nečitelným/chybějícím hodnotám]
-
-### [Jméno tvůrce 2]
-[tabulka metrik tohoto tvůrce]
-
-...
-
-## Interpretace a doporučení
-[Napříč tvůrci – kdo performoval nejlépe/nejhůř a proč, na základě dat. Konkrétní, věcné, opřené o čísla.]
-```
+For exhaustive metric definitions and edge cases, see [references/METRICS.md](references/METRICS.md).
 
 ---
 
-## ✍️ Styl výstupu a komunikační tón
+## 6. Reach Aggregation Warning
 
-- **Věcný, profesionální, analytický.**
-- **Žádné nepodložené superlativy** (vyvaruj se frází jako *„skvělý výsledek"*, *„famózní úspěch"* – nech mluvit konkrétní čísla a metriky).
-- Používej spisovnou češtinu a standardní české formátování čísel (oddělovač tisíců mezerou `15 020`, desetinná čárka `3,80 %`).
+Reach is **non-additive across distinct posts, dates, and creators**.
+
+When aggregating Reach across multiple content pieces:
+- Label the aggregated metric strictly as: **"Sum of Content-Level Reach"**.
+- Always include the mandatory disclosure:
+  > *Note: This represents the sum of individual content reach values and contains audience overlap. It must not be interpreted as unique campaign reach.*
 
 ---
 
-## 🧪 Vzorová testovací data
+## 7. Report Structure & Tone Standards
 
-```text
-Views: 15 020
-Saves: 9
-Reach: cca 11 500
-Likes: 398
-Comments: 28
-Shares / reposts: 2
-Engagement rate: cca 3,80 %
-```
+Reports must maintain an empirical, professional tone without unsubstantiated superlatives. Distinguish between:
+- **FACT:** Directly observed metrics from screenshots or platform exports.
+- **DERIVED METRIC:** Deterministic calculation using defined formulas.
+- **INTERPRETATION:** Cautious analytical deduction supported by numbers.
+- **RECOMMENDATION:** Concrete, testable action item for client strategy.
 
-### Očekávaný kontrolní výpočet:
-
-- **Celkové interakce:** $398 + 28 + 2 + 9 = 437$
-- **Kontrola ER:** $\frac{437}{11 500} \times 100 = 3,80 \%$
-- **Saves / Reach:** $\frac{9}{11 500} \times 100 = 0,08 \%$
-- **Comments / Likes:** $\frac{28}{398} \times 100 = 7,04 \%$
+For complete single-creator and multi-creator Markdown report templates, refer to [references/REPORT_FORMAT.md](references/REPORT_FORMAT.md).

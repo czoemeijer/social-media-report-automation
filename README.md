@@ -1,200 +1,179 @@
-# Social Media Report & Audit Skill (`social-report-audit`)
+# Social Report Audit
 
-Tento skill slouží k auditování a vytváření pravidelných, profesionálních a konzistentně strukturovaných reportů pro klienty na sociálních sítích (Instagram, Facebook). Umožňuje zadat aktuální metriky ve volném/zkratkovitém formátu, nebo je vytáhnout přímo ze screenshotů statistik, a okamžitě vygenerovat hotový analytický výstup – včetně rozpadu podle jednotlivých tvůrců.
+[![Agent Skills Compatible](https://img.shields.io/badge/Agent_Skills-1.0-blue.svg)](https://agentskills.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Tests](https://img.shields.io/badge/Tests-13%20passed-brightgreen.svg)](tests/)
 
----
-
-## 🎯 Spouštěcí podmínky (Triggery)
-
-Aktivuj tento skill automaticky, pokud:
-
-- Uživatel zmíní fráze jako **„audit reportu“**, **„vytvoř report“**, **„report pro klienta“**.
-- Uživatel zadá sadu metrik obsahující zobrazení, dosah, interakce či engagement rate (i zkratkovitě).
-- Uživatel vloží složku/soubory se screenshoty statistik Instagramu nebo Facebooku ke zpracování.
+An Agent Skill that extracts social-media metrics from Instagram and Facebook Insights screenshots or manually supplied numbers, normalizes them, audits inconsistencies, calculates derived engagement metrics, and generates structured, auditable campaign reports.
 
 ---
 
-## 📁 Struktura vstupních dat (při práci se soubory/screenshoty)
+## The Problem
 
-Skill očekává vstupní data organizovaná takto:
+Social media reporting across influencer campaigns, agencies, and brand accounts is plagued by four recurring issues:
 
-```
-[Název reportu]/
-  ├── [Tvůrce 1]/
-  │     ├── screenshot_insights_1.png
-  │     ├── screenshot_insights_2.png
-  │     └── ...
-  ├── [Tvůrce 2]/
-  │     ├── screenshot_insights_1.png
-  │     └── ...
-  └── ...
-```
+1. **Transcription & Unit Errors:** Misinterpreting rounded UI counts (e.g., treating `1.1k` as exact `1,100` when exact records show `1,225`).
+2. **Ambiguous Engagement Formulas:** Inconsistently mixing platform-reported "Interactions" (which may include profile visits, link taps, and sticker replies) with direct post reactions (Likes, Comments, Shares, Saves).
+3. **Flawed Reach Aggregation:** Arithmetically summing post Reach across multiple creators and mislabeling it as "unique campaign audience."
+4. **Mixing Organic and Paid Media:** Merging paid ad impressions, spend, or boosted reach into organic creator benchmarks.
 
-- **Název nadřazené složky** = název reportu / kampaně / klienta (použij v nadpisu výsledného reportu).
-- **Každá podsložka** = jeden tvůrce/creator – jeho jméno použij jako identifikátor v tabulce.
-- Uvnitř podsložky tvůrce mohou být screenshoty statistik (Instagram Insights, Facebook/Meta Business Suite), případně i `.csv`/`.xlsx` exporty.
-- Pokud uživatel zadá data ručně (bez souborů), přeskoč extrakci ze screenshotů a použij přímo zadaná čísla.
+## What This Skill Solves
 
----
+`social-report-audit` provides a standardized, auditable methodology for AI agents:
 
-## 📊 Pevná struktura standardních metrik
-
-Skill povinně rozpoznává a mapuje vstupní data (ať už textová nebo ze screenshotů) na následující standardní metriky:
-
-1. **Views (Zobrazení / Přehrání)**
-2. **Saves (Uložení)**
-3. **Reach (Dosah / Oslovené účty)** – často zadáváno s předponou `cca X` nebo `~X`
-4. **Likes (To se mi líbí / Reakce)**
-5. **Comments (Komentáře)**
-6. **Shares / reposts (Sdílení a přeposlání)**
-7. **Engagement rate (Míra zapojení v %)** – často zadáváno jako `cca X %`
+- **Source-of-Truth Hierarchy:** Raw screenshots and native exports always outrank generated reports.
+- **Deterministic Math:** Uses strict formulas for Known Engagement Actions ($\text{Likes} + \text{Comments} + \text{Shares} + \text{Saves}$) and Calculated ER by Reach.
+- **Interaction Discrepancy Auditing:** Decomposes composite platform interaction counts and reports uncategorized actions explicitly.
+- **Strict Domain Boundaries:** Segregates organic creator metrics from paid media numbers.
+- **Reach Overlap Disclosure:** Automatically tags summed Reach with audience overlap disclosures.
+- **Reproducible Pipeline:** Pairs LLM visual extraction with a zero-dependency Python calculation script.
 
 ---
 
-## 📸 Extrakce dat ze screenshotů (Instagram / Facebook)
+## Workflow Architecture
 
-### Rozpoznávání zdroje screenshotu
-
-Před extrakcí dat rozpoznej, ze které platformy screenshot pochází, podle vizuálních prvků UI:
-- **Instagram Insights** – sekce „Zobrazení", „Interakce s obsahem", „Návštěvy profilu", zaoblené karty, Instagram styl.
-- **Facebook Insights / Meta Business Suite** – modré UI prvky, terminologie „Dosah", „Interakce", „Zhlédnutí".
-
-### Mapování terminologie platforem na standardní metriky
-
-| Zobrazeno na screenshotu (CZ/EN) | Namapuj na standardní metriku |
-| :--- | :--- |
-| **Zobrazení / Views / Přehrání** | Views |
-| **Uložení / Saves** | Saves |
-| **Dosah / Reach / Oslovené účty** | Reach |
-| **Líbí se mi / Likes / Reakce** | Likes |
-| **Komentáře / Comments** | Comments |
-| **Sdílení / Přeposlání / Shares** | Shares / reposts |
-| **Míra zapojení / Engagement rate** | Engagement rate |
-
-### Pravidla pro čtení ze screenshotů
-
-1. **Čti čísla přesně tak, jak jsou zobrazená** – včetně zkratek (např. „11,5 tis." = 11 500; „15,02 tis." = 15 020).
-2. **Pokud je číslo částečně useknuté, rozmazané nebo nejisté**, neodhaduj – označ metriku jako nejistou a v reportu na to upozorni (*„hodnota nebyla čitelná, ověřte prosím ručně“*).
-3. **Pokud jeden tvůrce dodal víc screenshotů ze stejného příspěvku** (různé záložky statistik), slouč je do jedné sady metrik pro daný příspěvek, nikde nepočítej duplicitně.
-4. **Pokud screenshot obsahuje víc příspěvků najednou** (přehledová obrazovka), rozděl data podle jednotlivých příspěvků, pokud jsou rozlišitelné, jinak agreguj jako „souhrn za období".
-5. **Pokud jeden tvůrce má víc příspěvků/screenshotů celkem**, sečti/agreguj hodnoty za daného tvůrce (u ER počítej vážený průměr podle reach, ne prostý průměr).
-
----
-
-## ⚙️ Postup zpracování dat a logika výpočtů
-
-### 1. Parsování a mapování
-
-- Přijmi vstupní čísla v libovolném volném či zkráceném formátu (např. `views 15.02k, saves 9, reach cca 11.5k, likes 398, comm 28, shares 2, ER 3.8%`) nebo je vytáhni ze screenshotů dle pravidel výše.
-- Namapuj hodnoty na 7 pevných standardních metrik.
-- **Detekce chybějících metrik:** Pokud některá z klíčových metrik chybí nebo je nečitelná, explicitně na to v reportu upozorni a doplňkové výpočty závislé na této metrice označ jako nedostupné.
-
-### 2. Výpočet doplňkových ukazatelů a audit dat
-
-- **Celkové interakce:** $\text{Likes} + \text{Comments} + \text{Shares/reposts} + \text{Saves}$
-- **Audit Engagement Rate (vypočteno z Reach):**
-  $$
-  \text{ER (z Reach)} = \frac{\text{Celkové interakce}}{\text{Reach}} \times 100
-  $$
-  *Pokud se zadané ER liší od vypočteného, uveď v poznámce kontrolní přepočet.*
-- **Saves / Reach ratio (%):** $\frac{\text{Saves}}{\text{Reach}} \times 100$ *(indikátor hodnoty a uložitelnosti obsahu)*
-- **Comments / Likes ratio (%):** $\frac{\text{Comments}}{\text{Likes}} \times 100$ *(indikátor hloubky diskuse a komunitní odezvy)*
-
-### 3. Porovnání s předchozím obdobím (pokud je k dispozici)
-
-- Pokud jsou k dispozici historická data:
-  $$
-  \text{Trend (\%)} = \frac{\text{Aktuální} - \text{Předchozí}}{\text{Předchozí}} \times 100
-  $$
-- Vyjádři změnu s vizuálním označením směru (např. `+15,4 % ↗` nebo `-8,2 % ↘`).
-
----
-
-## 📝 Struktura výstupního Markdown reportu
-
-### A) Report za jednoduchou sadu metrik (bez rozpadu na tvůrce)
-
-```markdown
-# Report výkonu: [Název profilu / Klienta] – [Období / Datum]
-
-## 1. Tabulka metrik
-
-| Metrika | Aktuální hodnota | Předchozí období | Rozdíl / Trend | Poznámka |
-| :--- | :--- | :--- | :--- | :--- |
-| **Views (Zobrazení)** | ... | [předchozí] | [trend %] | Celkový počet zobrazení |
-| **Reach (Dosah)** | ... | [předchozí] | [trend %] | Unikátní oslovené účty |
-| **Likes (To se mi líbí)** | ... | [předchozí] | [trend %] | Přímé pozitivní reakce |
-| **Comments (Komentáře)** | ... | [předchozí] | [trend %] | Komentáře pod příspěvky |
-| **Shares / reposts** | ... | [předchozí] | [trend %] | Sdílení dalším uživatelům |
-| **Saves (Uložení)** | ... | [předchozí] | [trend %] | Uložení do záložek |
-| **Engagement rate** | ... | [předchozí] | [trend %] | Vypočteno z Reach |
-
-### Doplňkové ukazatele
-- **Celkový počet interakcí:** [Součet]
-- **Míra uložení (Saves / Reach):** [X,XX %]
-- **Poměr komentářů k lajkům (Comments / Likes):** [X,XX %]
-
----
-
-## 2. Věcná interpretace výkonu
-[2–4 věcné věty hodnotící výkon bez prázdných superlativů.]
-
-## 3. Porovnání s předchozím obdobím
-[Stručný odstavec, nebo: *Data za předchozí období nebyla poskytnuta.*]
-
-## 4. Doporučení a pozorování pro klienta
-1. **[Pozorování 1]:** ...
-2. **[Doporučení 2]:** ...
-3. **[Doporučení 3]:** ...
-```
-
-### B) Report se screenshoty a rozpadem podle tvůrců
-
-```markdown
-# Report výkonu: [Název reportu] – [Období]
-
-## Souhrn za všechny tvůrce
-[souhrnná tabulka metrik + doplňkové ukazatele, agregováno přes všechny tvůrce]
-
-## Výkon podle tvůrců
-
-### [Jméno tvůrce 1]
-[tabulka metrik tohoto tvůrce + poznámky k nečitelným/chybějícím hodnotám]
-
-### [Jméno tvůrce 2]
-[tabulka metrik tohoto tvůrce]
-
-...
-
-## Interpretace a doporučení
-[Napříč tvůrci – kdo performoval nejlépe/nejhůř a proč, na základě dat. Konkrétní, věcné, opřené o čísla.]
+```mermaid
+flowchart TD
+    A["Raw Screenshots / Raw Input Text"] --> B["Source & Platform Identification\n(Instagram vs Facebook)"]
+    B --> C["Metric Extraction & OCR Reading\n(Exact vs Approximate)"]
+    C --> D["Scope Classification\n(Organic vs Paid Media)"]
+    D --> E["Data Normalization\n(Canonical Data Model)"]
+    E --> F["Deterministic Engine\n(calculate_metrics.py)"]
+    F --> G["Discrepancy Audit\n(Known Actions vs Platform Total)"]
+    G --> H["Structured Markdown Report\n(Fact vs Derived vs Hypothesis)"]
 ```
 
 ---
 
-## ✍️ Styl výstupu a komunikační tón
+## Metric Definitions & Formulas
 
-- **Věcný, profesionální, analytický.**
-- **Žádné nepodložené superlativy** (vyvaruj se frází jako *„skvělý výsledek"*, *„famózní úspěch"* – nech mluvit konkrétní čísla a metriky).
-- Používej spisovnou češtinu a standardní české formátování čísel (oddělovač tisíců mezerou `15 020`, desetinná čárka `3,80 %`).
+| Metric | Type | Standard Formula / Definition | Caveats |
+| :--- | :--- | :--- | :--- |
+| **Known Engagement Actions** | Deterministic Sum | $\text{Likes} + \text{Comments} + \text{Shares} + \text{Saves}$ | Base for auditable organic engagement. |
+| **Calculated ER by Reach** | Calculated Ratio | $\frac{\text{Known Engagement Actions}}{\text{Reach}} \times 100$ | Primary standard ER. Approximate if Reach is approximate. |
+| **Save Rate** | Calculated Ratio | $\frac{\text{Saves}}{\text{Reach}} \times 100$ | Measures recipe, tutorial, or reference bookmarking value. |
+| **Comment / Like Ratio** | Calculated Ratio | $\frac{\text{Comments}}{\text{Likes}} \times 100$ | Measures conversation depth. Undefined (`N/A`) if Likes = 0. |
+| **Sum of Content Reach** | Aggregation | $\sum \text{Reach}_{\text{post}}$ | **Contains audience overlap.** Not unique campaign reach. |
+
+For exhaustive edge cases and schema rules, see:
+- [Metric Reference Guide](skills/social-report-audit/references/METRICS.md)
+- [Data Model & Source-of-Truth Hierarchy](skills/social-report-audit/references/DATA_MODEL.md)
+- [Standard Report Templates](skills/social-report-audit/references/REPORT_FORMAT.md)
 
 ---
 
-## 🧪 Vzorová testovací data
+## Quick Demo
 
+### 1. Raw Input
 ```text
-Views: 15 020
-Saves: 9
-Reach: cca 11 500
-Likes: 398
-Comments: 28
-Shares / reposts: 2
-Engagement rate: cca 3,80 %
+Platform: Instagram
+Format: Reel
+Reach: cca 10,000 (approximate)
+Likes: 420
+Comments: 18
+Shares: 32
+Saves: 80
+Platform-Reported Interactions: 550
 ```
 
-### Očekávaný kontrolní výpočet:
+### 2. Deterministic Audit
+- **Known Engagement Actions:** $420 + 18 + 32 + 80 = 550$
+- **Calculated ER by Reach:** $\frac{550}{10,000} \times 100 \approx 5.50\%$ (flagged approximate)
+- **Save Rate:** $\frac{80}{10,000} \times 100 \approx 0.80\%$
+- **Discrepancy Check:** Platform interactions ($550$) equal known actions ($550$). Uncategorized = $0$.
 
-- **Celkové interakce:** $398 + 28 + 2 + 9 = 437$
-- **Kontrola ER:** $\frac{437}{11 500} \times 100 = 3,80 \%$
-- **Saves / Reach:** $\frac{9}{11 500} \times 100 = 0,08 \%$
-- **Comments / Likes:** $\frac{28}{398} \times 100 = 7,04 \%$
+### 3. Generate Report
+Run the calculation engine against structured input:
+```bash
+python3 skills/social-report-audit/scripts/calculate_metrics.py examples/sample-input.json
+```
+See [examples/sample-report.md](examples/sample-report.md) for the complete generated output.
+
+---
+
+## Installation
+
+### For Google Antigravity
+Clone or copy this repository into your workspace:
+```bash
+# Workspace project skill location:
+mkdir -p .agents/skills
+cp -r skills/social-report-audit .agents/skills/
+```
+
+### For Common Agent Skills Specification
+Place the skill into your agent's configured skills path:
+```bash
+cp -r skills/social-report-audit <agent-skills-directory>/
+```
+Conforms directly to the [Agent Skills Open Specification](https://agentskills.io/specification).
+
+---
+
+## Privacy & Data Safety Model
+
+This project is engineered for zero data leakage:
+
+1. **No External Telemetry:** All extraction and calculation processes run locally within the agent execution environment.
+2. **Strict Git Exclusions:** `.gitignore` blocks screenshots (`*.png`, `*.jpg`, `*.jpeg`), archive packages (`*.zip`), raw test dumps (`vzor dat/`, `.vzor_dat/`), and private reports (`REPORT_*.md`).
+3. **Synthetic Public Examples:** All repository examples (`examples/`) use fictional names, synthetic values, and simulated scenarios.
+
+---
+
+## Project Structure
+
+```
+social-media-report-automation/
+├── README.md                                  # Landing page and usage guide
+├── LICENSE                                    # MIT License
+├── .gitignore                                 # Protection against data leakage
+├── skills/
+│   └── social-report-audit/
+│       ├── SKILL.md                           # Main agent instruction definition
+│       ├── references/
+│       │   ├── METRICS.md                     # Formulas, scopes, and aggregation rules
+│       │   ├── DATA_MODEL.md                  # Provenance hierarchy and JSON schema
+│       │   └── REPORT_FORMAT.md               # Standard Markdown report templates
+│       └── scripts/
+│           └── calculate_metrics.py           # Python deterministic calculation engine
+├── examples/
+│   ├── README.md                              # Guide to synthetic test cases
+│   ├── sample-raw-input.md                    # Raw simulation input
+│   ├── sample-input.json                      # Normalized test fixture
+│   └── sample-report.md                       # Sample Markdown output
+└── tests/
+    ├── test_regression_cases.py               # Known regression tests (Cases 1–5)
+    └── test_calculate_metrics.py              # CLI and edge-case unit tests
+```
+
+---
+
+## Verification & Testing
+
+Run the test suite using Python's standard library:
+
+```bash
+python3 -m unittest discover tests
+```
+
+All 13 unit and regression tests pass deterministically across:
+- **Case 1 (FB Reel):** $398 + 28 + 2 + 9 = 437 \rightarrow 437 / 11,500 \approx 3.80\%$ (approximate flag preserved).
+- **Case 2 (IG Reel):** $1,225 + 64 + 3 + 39 = 1,331 \rightarrow 1,331 / 17,664 \approx 7.53\%$ (prevents rounding to 1,100).
+- **Case 3 (IG Reel):** $130 + 6 + 3 + 111 = 250 \rightarrow 250 / 7,563 \approx 3.31\%$.
+- **Case 4 (IG Reel):** $123 + 2 + 2 + 49 = 176 \rightarrow 176 / 6,402 \approx 2.75\%$.
+- **Case 5 (Interaction Bug Fix):** Asserts $1,753 + 100 + 10 + 208 = 2,071$ (never 2,107 unless additional actions are explicitly cataloged).
+- **Edge cases:** Missing Reach, zero Likes, paid media boundaries, Reach aggregation warnings.
+
+---
+
+## Limitations
+
+- **Cross-Asset Deduplication:** Without native Meta Ads Manager or API-level audience exports, cross-post and multi-creator audience deduplication cannot be calculated mathematically; summed Reach must always be labeled with an audience overlap caveat.
+- **Cropped UI Captures:** If a metric is truncated or hidden behind a menu, the skill marks it unreadable rather than inferring values.
+- **Platform Taxonomy Changes:** Social platforms periodically revise metric naming (e.g., "Accounts Center Accounts" vs. "Accounts reached"); new UI patterns must be mapped into `DATA_MODEL.md`.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

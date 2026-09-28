@@ -1,0 +1,48 @@
+[
+  {
+    "creator": "Culinary Studio",
+    "platform": "instagram",
+    "content_format": "reel",
+    "scope": "organic",
+    "views": 18450,
+    "reach": 12000,
+    "reach_is_approximate": true,
+    "likes": 512,
+    "comments": 34,
+    "shares": 8,
+    "saves": 95,
+    "platform_reported_interactions": 649,
+    "source_file": "screenshot_studio_reel.png"
+  },
+  {
+    "creator": "Culinary Studio",
+    "platform": "instagram",
+    "content_format": "story",
+    "scope": "organic",
+    "views": 2150,
+    "reach": 1820,
+    "reach_is_approximate": false,
+    "likes": 14,
+    "comments": 2,
+    "shares": 0,
+    "saves": null,
+    "platform_reported_interactions": 64,
+    "source_file": "screenshot_studio_story.png"
+  },
+  {
+    "creator": "Modern Baker",
+    "platform": "instagram",
+    "content_format": "reel",
+    "scope": "organic",
+    "views": 14200,
+    "reach": 8900,
+    "reach_is_approximate": false,
+    "likes": 310,
+    "comments": 19,
+    "shares": null,
+    "saves": 142,
+    "platform_reported_interactions": 471,
+    "source_file": "screenshot_baker_reel.png",
+    "notes": "Shares cropped in UI, marked null/unreadable"
+  }
+]
