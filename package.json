@@ -1,0 +1,25 @@
+{
+  "name": "social-media-report-automation",
+  "version": "1.1.0",
+  "description": "Agent Skill and deterministic calculation engine for social media campaign auditing, engagement verification, and structured reporting.",
+  "main": "skills/social-report-audit/scripts/calculate_metrics.py",
+  "scripts": {
+    "test": "python3 -m unittest discover tests -v"
+  },
+  "keywords": [
+    "agent-skills",
+    "social-media",
+    "audit",
+    "instagram-insights",
+    "facebook-insights",
+    "engagement-rate",
+    "marketing-analytics",
+    "anti-hallucination"
+  ],
+  "author": "Catherine Zoe Meijer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/czoemeijer/social-media-report-automation.git"
+  }
+}

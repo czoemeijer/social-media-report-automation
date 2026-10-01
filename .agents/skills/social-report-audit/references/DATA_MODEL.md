@@ -31,13 +31,13 @@ Every extracted data point is normalized into the following conceptual record:
 
 | Field Name | Type | Allowed Values / Examples | Description |
 | :--- | :--- | :--- | :--- |
-| `metric_name` | string | `views`, `reach`, `likes`, `comments`, `shares`, `saves`, `platform_interactions` | Canonical metric identifier. |
+| `metric_name` | string | `views`, `reach`, `likes`, `comments`, `shares`, `saves`, `platform_interactions`, `feed_shares`, `feed_reposts` | Canonical metric identifier. |
 | `value` | float / int / null | `15020`, `1225`, `null` | Extracted numeric value. Null if unreadable or absent. |
 | `precision` | string | `exact`, `approximate`, `unreadable`, `missing` | Indicates confidence in value fidelity. |
 | `platform` | string | `instagram`, `facebook`, `meta_business_suite`, `cross_platform` | Originating network. |
 | `content_format` | string | `reel`, `story`, `carousel`, `feed_post`, `unknown` | Asset publication format. |
 | `creator` | string | e.g., `creator_a`, `anonymous` | Identifier or handle of the content creator. |
-| `scope` | string | `organic`, `paid`, `unknown` | Clear boundary between creator and paid ad data. |
+| `scope` | string | `organic`, `paid`, `mixed_or_unknown`, `unknown` | Clear boundary between creator and paid ad data. |
 | `source_file` | string | `screenshot_01.png`, `user_input` | Provenance trace to source file or prompt. |
 | `notes` | string | e.g., `"Approximate: display showed 'cca 11,5 tis.'"` | Contextual notes on reading conditions. |
 
@@ -56,6 +56,14 @@ When extracting data from UI screenshots:
 3. **Unreadable / Cropped Metrics:**
    - If an indicator is truncated (e.g., `--` on shares, or cropped edge), do **not** guess.
    - Set `value: null`, `precision: "unreadable"`, and flag in the report: `Metrika nečitelná / useknutá na screenshotu`.
-4. **Deduplication Across Tabs & Sliders:**
+4. **Absence vs. Zero Distinction:**
+   - The absence of a metric line on a card is **not** equivalent to zero. If a platform card omits a metric (e.g., Reel Profile activity showing only Follows, omitting External link taps), record the value as `null` / `unavailable`.
+   - Only record `0` when the UI explicitly displays a numeric zero (e.g. `Business address taps: 0`).
+5. **Feed-Visible Distribution vs. Canonical Insights Shares:**
+   - Public feed send/share and repost icons track distribution actions in the feed UI that may not map 1:1 to Insights `shares`.
+   - Record feed metrics in distinct fields (`feed_shares`, `feed_reposts`) and preserve canonical `shares` without overwriting.
+6. **Incomplete Engagement Actions:**
+   - If any of Likes, Comments, Shares, or Saves is `null`, flag engagement as incomplete. Never calculate or present a complete ER; provide only known actions and an explicitly labeled lower bound.
+7. **Deduplication Across Tabs & Sliders:**
    - Instagram Insights splits insights into *Přehled* (Overview), *Projevený zájem* (Interactions), and *Okruh uživatelů* (Audience).
    - Verify post identity before aggregating: match thumbnail, publication date, or duration to avoid counting the same post multiple times.

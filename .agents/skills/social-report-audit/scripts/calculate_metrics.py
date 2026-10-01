@@ -30,13 +30,47 @@ def calculate_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
     platform_interactions = item.get("platform_reported_interactions")
     scope = item.get("scope", "organic").lower()
     reach_is_approximate = item.get("reach_is_approximate", False)
+    has_ad_disclaimer = (
+        item.get("has_ad_disclaimer")
+        or item.get("ad_disclaimer")
+        or item.get("ad_disclaimer_present")
+        or False
+    )
+    feed_shares = item.get("feed_shares")
+    feed_reposts = item.get("feed_reposts")
 
-    # Validation: organic vs paid boundaries
-    if scope == "paid":
-        result["warnings"] = result.get("warnings", [])
-        result["warnings"].append(
+    # Validation: organic vs paid vs mixed_or_unknown boundaries
+    if has_ad_disclaimer or scope in ["mixed_or_unknown", "mixed", "unknown_with_ads"]:
+        scope = "mixed_or_unknown"
+        result["scope"] = scope
+        result.setdefault("warnings", []).append(
+            "Insights include post/reel and any ads disclaimer without separate Ad breakdown: "
+            "scope classified as mixed_or_unknown; organic and paid contributions cannot be separated."
+        )
+    elif scope == "paid":
+        result.setdefault("warnings", []).append(
             "Paid scope detected: Standard organic ER by Reach is not applicable to paid media."
         )
+
+    # Feed-visible share/repost metrics separation from canonical Insights shares
+    if feed_shares is not None:
+        result["feed_shares"] = feed_shares
+    if feed_reposts is not None:
+        result["feed_reposts"] = feed_reposts
+
+    if shares is None and (feed_shares is not None or feed_reposts is not None):
+        result["feed_vs_insights_shares_discrepancy"] = True
+        result["feed_vs_insights_note"] = (
+            "Feed-visible share/repost metrics are tracked separately and do not overwrite canonical Insights shares."
+        )
+    elif shares is not None and feed_shares is not None and shares != feed_shares:
+        result["feed_vs_insights_shares_discrepancy"] = True
+        result["feed_vs_insights_note"] = (
+            f"Discrepancy detected: Insights shares ({shares}) differs from feed-visible shares ({feed_shares}). "
+            "Both values are preserved separately without overwriting."
+        )
+    else:
+        result["feed_vs_insights_shares_discrepancy"] = False
 
     # 1. Known engagement actions (Likes + Comments + Shares + Saves)
     known_components = [likes, comments, shares, saves]
@@ -45,15 +79,20 @@ def calculate_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
     if len(valid_components) == 4:
         known_actions = sum(valid_components)
         result["known_engagement_actions"] = known_actions
+        result["engagement_is_complete"] = True
+        result["missing_engagement_components"] = []
     elif len(valid_components) > 0:
         known_actions = sum(valid_components)
         result["known_engagement_actions"] = known_actions
+        result["engagement_is_complete"] = False
         result["missing_engagement_components"] = [
             name for name, val in [("likes", likes), ("comments", comments), ("shares", shares), ("saves", saves)] if val is None
         ]
     else:
         known_actions = None
         result["known_engagement_actions"] = None
+        result["engagement_is_complete"] = False
+        result["missing_engagement_components"] = ["likes", "comments", "shares", "saves"]
 
     # 2. Platform interactions discrepancy check
     if platform_interactions is not None and known_actions is not None:
@@ -62,14 +101,34 @@ def calculate_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
             result["interaction_discrepancy"] = True
         else:
             result["interaction_discrepancy"] = False
+    elif platform_interactions is None:
+        result["uncategorized_interactions"] = None
+        result["interaction_discrepancy"] = False
 
     # 3. Calculated ER by Reach
     if reach is not None and reach > 0 and known_actions is not None:
         er = (known_actions / reach) * 100.0
-        result["calculated_er_by_reach"] = round(er, 4)
+        if len(valid_components) == 4:
+            result["calculated_er_by_reach"] = round(er, 4)
+            result["er_is_complete"] = True
+            result["er_lower_bound_by_reach"] = None
+            result["er_status"] = "complete"
+        else:
+            # If any component is missing or unreadable, ER MUST NOT be presented as complete.
+            result["calculated_er_by_reach"] = None
+            result["er_is_complete"] = False
+            result["er_lower_bound_by_reach"] = round(er, 4)
+            result["er_status"] = "incomplete_lower_bound"
+            result.setdefault("warnings", []).append(
+                f"Incomplete engagement components: {result['missing_engagement_components']} missing/unavailable. "
+                f"Calculated ER cannot be presented as complete; known actions lower bound is {result['er_lower_bound_by_reach']}%."
+            )
         result["er_is_approximate"] = reach_is_approximate
     else:
         result["calculated_er_by_reach"] = None
+        result["er_lower_bound_by_reach"] = None
+        result["er_is_complete"] = False
+        result["er_status"] = "unavailable"
         result["er_is_approximate"] = False
 
     # 4. Save Rate (Saves / Reach)
@@ -92,7 +151,8 @@ def calculate_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
 def aggregate_campaign(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Aggregates metrics across multiple content items / creators.
-    Labels summed reach explicitly and prevents silent addition of uncategorized interactions.
+    Labels summed reach explicitly, separates organic vs paid vs mixed_or_unknown,
+    and flags incomplete engagement components across campaign assets.
     """
     total_views = 0
     total_likes = 0
@@ -111,12 +171,31 @@ def aggregate_campaign(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     has_reach = False
     has_platform_interactions = False
 
+    all_engagement_complete = True
+    items_with_missing_components = []
+    has_mixed_or_unknown = False
+    campaign_warnings = []
+
     for item in items:
-        # Organic only for standard aggregated ER
-        if item.get("scope", "organic") == "paid":
+        item_scope = item.get("scope", "organic").lower()
+        if (
+            item.get("has_ad_disclaimer")
+            or item.get("ad_disclaimer")
+            or item.get("ad_disclaimer_present")
+            or item_scope in ["mixed_or_unknown", "mixed", "unknown_with_ads"]
+        ):
+            has_mixed_or_unknown = True
+        elif item_scope == "paid":
+            # Paid only items excluded from creator aggregation
             continue
 
         res = calculate_single_item(item)
+
+        if res.get("engagement_is_complete") is False:
+            all_engagement_complete = False
+            item_id = item.get("id") or item.get("creator") or item.get("title") or "unknown_asset"
+            missing = res.get("missing_engagement_components", [])
+            items_with_missing_components.append(f"{item_id} ({', '.join(missing)})")
 
         if res.get("views") is not None:
             total_views += res["views"]
@@ -165,10 +244,37 @@ def aggregate_campaign(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "reach_aggregation_warning": (
             "Sum of content-level Reach contains audience overlap and must not be interpreted as unique campaign Reach."
         ),
-        "weighted_calculated_er_by_reach": calculated_er,
         "overall_save_rate_pct": save_rate,
         "overall_comment_to_like_ratio_pct": com_like_ratio,
     }
+
+    if all_engagement_complete:
+        summary["weighted_calculated_er_by_reach"] = calculated_er
+        summary["weighted_er_lower_bound_by_reach"] = None
+        summary["er_is_complete"] = True
+        summary["er_status"] = "complete"
+    else:
+        summary["weighted_calculated_er_by_reach"] = None
+        summary["weighted_er_lower_bound_by_reach"] = calculated_er
+        summary["er_is_complete"] = False
+        summary["er_status"] = "incomplete_lower_bound"
+        summary["items_with_missing_components"] = items_with_missing_components
+        campaign_warnings.append(
+            f"Campaign contains items with incomplete engagement components: {items_with_missing_components}. "
+            f"Weighted ER cannot be presented as complete; aggregate known actions lower bound is {calculated_er}%."
+        )
+
+    if has_mixed_or_unknown:
+        summary["scope"] = "mixed_or_unknown"
+        campaign_warnings.append(
+            "Campaign contains items with mixed_or_unknown scope (ads disclaimer present without separate Ad breakdown): "
+            "organic and paid contributions cannot be separated."
+        )
+    else:
+        summary["scope"] = "organic"
+
+    if campaign_warnings:
+        summary["warnings"] = campaign_warnings
 
     if has_platform_interactions:
         summary["total_platform_reported_interactions"] = total_platform_interactions
