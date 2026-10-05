@@ -21,120 +21,120 @@ class TestRegressionCases(unittest.TestCase):
     def test_regression_case_1_facebook(self):
         """
         REGRESSION CASE 1 — Creator A — Facebook
-        Views = 15,020, Saves = 9, Reach = cca 11,500, Likes = 398, Comments = 28, Shares = 2
-        Known actions: 398 + 28 + 2 + 9 = 437
-        Calculated ER by Reach: 437 / 11,500 * 100 ≈ 3.80% (approximate)
+        Views = 12,000, Saves = 6, Reach = cca 10,000, Likes = 300, Comments = 20, Shares = 4
+        Known actions: 300 + 20 + 4 + 6 = 330
+        Calculated ER by Reach: 330 / 10,000 * 100 = 3.30% (approximate)
         """
         item = {
             "creator": "Creator A",
             "platform": "facebook",
-            "views": 15020,
-            "likes": 398,
-            "comments": 28,
-            "shares": 2,
-            "saves": 9,
-            "reach": 11500,
+            "views": 12000,
+            "likes": 300,
+            "comments": 20,
+            "shares": 4,
+            "saves": 6,
+            "reach": 10000,
             "reach_is_approximate": True,
             "scope": "organic"
         }
         res = calculate_single_item(item)
-        self.assertEqual(res["known_engagement_actions"], 437)
-        self.assertAlmostEqual(res["calculated_er_by_reach"], 3.8000, places=2)
+        self.assertEqual(res["known_engagement_actions"], 330)
+        self.assertAlmostEqual(res["calculated_er_by_reach"], 3.3000, places=2)
         self.assertTrue(res["er_is_approximate"])
 
     def test_regression_case_2_instagram(self):
         """
         REGRESSION CASE 2 — Creator A — Instagram
-        Views = 26,437, Saves = 39, Reach = 17,664, Likes = 1,225, Comments = 64, Shares = 3
-        Known actions: 1,225 + 64 + 3 + 39 = 1,331
-        Calculated ER: 1,331 / 17,664 * 100 ≈ 7.53%
-        Crucial check: Exact 1,225 must NOT be rounded down to 1,100!
+        Views = 24,000, Saves = 30, Reach = 16,000, Likes = 1,125, Comments = 50, Shares = 5
+        Known actions: 1,125 + 50 + 5 + 30 = 1,210
+        Calculated ER: 1,210 / 16,000 * 100 = 7.56%
+        Crucial check: Exact 1,125 must NOT be rounded down to 1,000 or 1,100!
         """
         item = {
             "creator": "Creator A",
             "platform": "instagram",
-            "views": 26437,
-            "likes": 1225,
-            "comments": 64,
-            "shares": 3,
-            "saves": 39,
-            "reach": 17664,
+            "views": 24000,
+            "likes": 1125,
+            "comments": 50,
+            "shares": 5,
+            "saves": 30,
+            "reach": 16000,
             "reach_is_approximate": False,
             "scope": "organic"
         }
         res = calculate_single_item(item)
-        self.assertEqual(res["likes"], 1225)
-        self.assertEqual(res["known_engagement_actions"], 1331)
-        self.assertAlmostEqual(res["calculated_er_by_reach"], 7.5348, places=2)
+        self.assertEqual(res["likes"], 1125)
+        self.assertEqual(res["known_engagement_actions"], 1210)
+        self.assertAlmostEqual(res["calculated_er_by_reach"], 7.5625, places=2)
         self.assertFalse(res["er_is_approximate"])
 
     def test_regression_case_3_creator_b(self):
         """
         REGRESSION CASE 3 — Creator B
-        Likes = 130, Comments = 6, Shares = 3, Saves = 111, Reach = 7,563
-        Known actions: 130 + 6 + 3 + 111 = 250
-        Calculated ER: 250 / 7,563 * 100 ≈ 3.31%
+        Likes = 140, Comments = 8, Shares = 2, Saves = 110, Reach = 7,500
+        Known actions: 140 + 8 + 2 + 110 = 260
+        Calculated ER: 260 / 7,500 * 100 ≈ 3.47%
         """
         item = {
             "creator": "Creator B",
             "platform": "instagram",
-            "views": 13029,
-            "likes": 130,
-            "comments": 6,
-            "shares": 3,
-            "saves": 111,
-            "reach": 7563,
+            "views": 12500,
+            "likes": 140,
+            "comments": 8,
+            "shares": 2,
+            "saves": 110,
+            "reach": 7500,
             "scope": "organic"
         }
         res = calculate_single_item(item)
-        self.assertEqual(res["known_engagement_actions"], 250)
-        self.assertAlmostEqual(res["calculated_er_by_reach"], 3.3056, places=2)
+        self.assertEqual(res["known_engagement_actions"], 260)
+        self.assertAlmostEqual(res["calculated_er_by_reach"], 3.4667, places=2)
         # Check save rate
-        self.assertAlmostEqual(res["save_rate_pct"], 1.4677, places=2)
+        self.assertAlmostEqual(res["save_rate_pct"], 1.4667, places=2)
 
     def test_regression_case_4_creator_c_reel(self):
         """
         REGRESSION CASE 4 — Creator C — Reel
-        Likes = 123, Comments = 2, Shares = 2, Saves = 49, Reach = 6,402
-        Known actions: 123 + 2 + 2 + 49 = 176
-        Calculated ER: 176 / 6,402 * 100 ≈ 2.75%
+        Likes = 120, Comments = 4, Shares = 2, Saves = 54, Reach = 6,000
+        Known actions: 120 + 4 + 2 + 54 = 180
+        Calculated ER: 180 / 6,000 * 100 = 3.00%
         """
         item = {
             "creator": "Creator C",
             "platform": "instagram",
-            "views": 11405,
-            "likes": 123,
-            "comments": 2,
+            "views": 10000,
+            "likes": 120,
+            "comments": 4,
             "shares": 2,
-            "saves": 49,
-            "reach": 6402,
+            "saves": 54,
+            "reach": 6000,
             "scope": "organic"
         }
         res = calculate_single_item(item)
-        self.assertEqual(res["known_engagement_actions"], 176)
-        self.assertAlmostEqual(res["calculated_er_by_reach"], 2.7491, places=2)
+        self.assertEqual(res["known_engagement_actions"], 180)
+        self.assertAlmostEqual(res["calculated_er_by_reach"], 3.0000, places=2)
 
     def test_regression_case_5_interaction_bug_prevention(self):
         """
-        REGRESSION CASE 5 — Fix the 2,071 vs 2,107 Interaction Bug
-        Likes = 1,753, Comments = 100, Shares = 10, Saves = 208
-        Expected known engagement actions = 2,071 (NOT 2,107).
-        If platform reports 2,107, uncategorized interactions must equal 36.
+        REGRESSION CASE 5 — Fix the Interaction Discrepancy Bug
+        Likes = 1,600, Comments = 80, Shares = 12, Saves = 188
+        Expected known engagement actions = 1,880.
+        If platform reports 1,920, uncategorized interactions must equal 40.
         """
         item = {
             "creator": "Aggregated Content",
-            "likes": 1753,
-            "comments": 100,
-            "shares": 10,
-            "saves": 208,
-            "reach": 52280,
-            "platform_reported_interactions": 2107,
+            "likes": 1600,
+            "comments": 80,
+            "shares": 12,
+            "saves": 188,
+            "reach": 45000,
+            "platform_reported_interactions": 1920,
             "scope": "organic"
         }
         res = calculate_single_item(item)
-        self.assertEqual(res["known_engagement_actions"], 2071)
-        self.assertNotEqual(res["known_engagement_actions"], 2107)
-        self.assertEqual(res["uncategorized_interactions"], 36)
+        self.assertEqual(res["known_engagement_actions"], 1880)
+        self.assertNotEqual(res["known_engagement_actions"], 1920)
+        self.assertEqual(res["uncategorized_interactions"], 40)
         self.assertTrue(res["interaction_discrepancy"])
 
 
@@ -246,51 +246,51 @@ class TestPostAuditRefinements(unittest.TestCase):
 
     def test_feed_shares_separation_and_discrepancy(self):
         """
-        Feed-visible send/share (paper plane = 7) and reposts (arrows = 1) must be preserved
+        Feed-visible send/share (paper plane = 5) and reposts (arrows = 2) must be preserved
         in distinct fields and must NOT overwrite canonical Insights shares (which is None / --).
         """
         item = {
             "creator": "Synthetic Video Asset",
-            "likes": 892,
+            "likes": 800,
             "comments": 0,
-            "saves": 7,
+            "saves": 10,
             "shares": None,
-            "feed_shares": 7,
-            "feed_reposts": 1,
-            "reach": 8963
+            "feed_shares": 5,
+            "feed_reposts": 2,
+            "reach": 8000
         }
         res = calculate_single_item(item)
         self.assertIsNone(res["shares"])
-        self.assertEqual(res["feed_shares"], 7)
-        self.assertEqual(res["feed_reposts"], 1)
+        self.assertEqual(res["feed_shares"], 5)
+        self.assertEqual(res["feed_reposts"], 2)
         self.assertTrue(res["feed_vs_insights_shares_discrepancy"])
         # Canonical known actions must NOT silently include feed_shares
-        self.assertEqual(res["known_engagement_actions"], 899)
-        self.assertEqual(res["er_lower_bound_by_reach"], 10.0301)
+        self.assertEqual(res["known_engagement_actions"], 810)
+        self.assertAlmostEqual(res["er_lower_bound_by_reach"], 10.1250, places=2)
         self.assertIsNone(res["calculated_er_by_reach"])
 
     def test_mixed_content_campaign_full_audit(self):
         """
         Full regression verification of the dual-asset retail campaign synthetic dataset:
         - Asset 1 (Static post 'Food Storage Guide'):
-          Views: 4639, Reach: 1765, Likes: 128, Comments: 0, Saves: 5, Shares: None.
+          Views: 4000, Reach: 1500, Likes: 120, Comments: 0, Saves: 5, Shares: None.
           Ad disclaimer: True -> scope: mixed_or_unknown.
-          Known actions: 133, Lower bound ER: 7.5354%, Complete ER: None.
+          Known actions: 125, Lower bound ER: 8.3333%, Complete ER: None.
           External link taps: 15, Business address taps: 0.
         - Asset 2 (Reel 'Store Launch Announcement'):
-          Views: 15713, Reach: 8963, Likes: 892, Comments: 0, Saves: 7, Shares: None.
-          Feed shares: 7, Feed reposts: 1.
+          Views: 15000, Reach: 8000, Likes: 800, Comments: 0, Saves: 10, Shares: None.
+          Feed shares: 5, Feed reposts: 2.
           Ad disclaimer: True -> scope: mixed_or_unknown.
-          Known actions: 899, Lower bound ER: 10.0301%, Complete ER: None.
-          External link taps: None (unavailable), Follows: 7.
+          Known actions: 810, Lower bound ER: 10.1250%, Complete ER: None.
+          External link taps: None (unavailable), Follows: 5.
         """
         post_item = {
             "id": "post_food_storage",
             "title": "Food Storage Guide (Static Graphic)",
             "content_format": "feed_post",
-            "views": 4639,
-            "reach": 1765,
-            "likes": 128,
+            "views": 4000,
+            "reach": 1500,
+            "likes": 120,
             "comments": 0,
             "saves": 5,
             "shares": None,
@@ -304,47 +304,47 @@ class TestPostAuditRefinements(unittest.TestCase):
             "id": "reel_store_launch",
             "title": "New Store Launch Announcement (Reel)",
             "content_format": "reel",
-            "views": 15713,
-            "reach": 8963,
-            "likes": 892,
+            "views": 15000,
+            "reach": 8000,
+            "likes": 800,
             "comments": 0,
-            "saves": 7,
+            "saves": 10,
             "shares": None,
-            "feed_shares": 7,
-            "feed_reposts": 1,
+            "feed_shares": 5,
+            "feed_reposts": 2,
             "has_ad_disclaimer": True,
             "external_link_taps": None,
-            "follows": 7
+            "follows": 5
         }
 
         res_post = calculate_single_item(post_item)
         self.assertEqual(res_post["scope"], "mixed_or_unknown")
-        self.assertEqual(res_post["known_engagement_actions"], 133)
+        self.assertEqual(res_post["known_engagement_actions"], 125)
         self.assertIsNone(res_post["calculated_er_by_reach"])
-        self.assertAlmostEqual(res_post["er_lower_bound_by_reach"], 7.5354, places=2)
+        self.assertAlmostEqual(res_post["er_lower_bound_by_reach"], 8.3333, places=2)
         self.assertEqual(res_post["external_link_taps"], 15)
         self.assertEqual(res_post["business_address_taps"], 0)
 
         res_reel = calculate_single_item(reel_item)
         self.assertEqual(res_reel["scope"], "mixed_or_unknown")
-        self.assertEqual(res_reel["known_engagement_actions"], 899)
+        self.assertEqual(res_reel["known_engagement_actions"], 810)
         self.assertIsNone(res_reel["calculated_er_by_reach"])
-        self.assertAlmostEqual(res_reel["er_lower_bound_by_reach"], 10.0301, places=2)
+        self.assertAlmostEqual(res_reel["er_lower_bound_by_reach"], 10.1250, places=2)
         self.assertIsNone(res_reel["external_link_taps"])
-        self.assertEqual(res_reel["follows"], 7)
-        self.assertEqual(res_reel["feed_shares"], 7)
-        self.assertEqual(res_reel["feed_reposts"], 1)
+        self.assertEqual(res_reel["follows"], 5)
+        self.assertEqual(res_reel["feed_shares"], 5)
+        self.assertEqual(res_reel["feed_reposts"], 2)
 
         # Campaign aggregation
         agg = aggregate_campaign([post_item, reel_item])
-        self.assertEqual(agg["total_views"], 20352)
-        self.assertEqual(agg["sum_of_content_reach"], 10728)
-        self.assertEqual(agg["total_likes"], 1020)
+        self.assertEqual(agg["total_views"], 19000)
+        self.assertEqual(agg["sum_of_content_reach"], 9500)
+        self.assertEqual(agg["total_likes"], 920)
         self.assertEqual(agg["total_comments"], 0)
-        self.assertEqual(agg["total_saves"], 12)
-        self.assertEqual(agg["total_known_engagement_actions"], 1032)
+        self.assertEqual(agg["total_saves"], 15)
+        self.assertEqual(agg["total_known_engagement_actions"], 935)
         self.assertIsNone(agg["weighted_calculated_er_by_reach"])
-        self.assertAlmostEqual(agg["weighted_er_lower_bound_by_reach"], 9.6197, places=2)
+        self.assertAlmostEqual(agg["weighted_er_lower_bound_by_reach"], 9.8421, places=2)
         self.assertEqual(agg["scope"], "mixed_or_unknown")
         self.assertFalse(agg["er_is_complete"])
         self.assertEqual(agg["er_status"], "incomplete_lower_bound")

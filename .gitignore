@@ -1,4 +1,6 @@
 # Private client data, raw test inputs & reports
+smetanito influenceři/
+smetanito*/
 .vzor_dat/
 vzor dat/
 data/
@@ -8,20 +10,39 @@ output/
 temp/
 tmp/
 *.md.backup
-/REPORT_*.md
+REPORT_*.md
+**/REPORT_*.md
 *_audit_report.md
+*.xlsx
+*.XLSX
+*.csv
+*.docx
+*.DOCX
 
 # Media & archives (prevents accidental screenshot and media commits)
 *.png
+*.PNG
 *.jpg
+*.JPG
 *.jpeg
+*.JPEG
+*.heic
+*.HEIC
 *.webp
+*.WEBP
 *.gif
+*.GIF
 *.svg.bak
 *.zip
 *.tar.gz
 *.mp4
+*.MP4
 *.mov
+*.MOV
+*.m4v
+*.M4V
+*.avi
+*.webm
 
 # Environment variables & secrets
 .env
@@ -59,3 +80,6 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# Local agent configs & private skills
+.agents/

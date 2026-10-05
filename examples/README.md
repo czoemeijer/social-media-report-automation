@@ -9,6 +9,8 @@ This folder provides a complete, privacy-safe, reproducible end-to-end example o
 - **`sample-raw-input.md`**: Realistic raw notes and screenshot metric transcriptions (approximate values, missing values, platform discrepancies).
 - **`sample-input.json`**: The canonical normalized JSON representation conforming to [references/DATA_MODEL.md](../skills/social-report-audit/references/DATA_MODEL.md).
 - **`sample-report.md`**: The final auditable Markdown report produced from this data conforming to [references/REPORT_FORMAT.md](../skills/social-report-audit/references/REPORT_FORMAT.md).
+- **`sample-story-series-input.json`**: Sample input data for the `story-series-extract` skill (Instagram Story sequences).
+- **`sample-story-series-report.md`**: Standardized output report for Story series performance and poll results.
 
 ---
 

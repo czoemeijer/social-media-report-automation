@@ -37,14 +37,14 @@ This document outlines the optimal client architecture and implementation strate
 
 ### Option A: Streamlit Desktop / Local WebApp (Recommended ⭐⭐⭐⭐⭐)
 * **What it is:** A lightweight, pure-Python web UI framework.
-* **Architecture:** A single file `clients/streamlit_app.py` (~150 lines) that directly imports `calculate_metrics.py` and calls the Vision LLM API.
+* **Architecture:** A single file `ui/streamlit_app.py` (~150 lines) that directly imports `calculate_metrics.py` and calls the Vision LLM API.
 * **User Experience:**
   - Drag-and-drop file uploader box (supports multiple files).
   - Thumbnail gallery of uploaded screenshots.
   - Interactive metric summary cards (Total Views, Reach, Lower Bound ER).
   - Live editable Markdown report with "Download Report (.md / .pdf)" buttons.
 * **Deployment Options:**
-  - **Local One-Click App:** Run via `streamlit run clients/streamlit_app.py` or packaged into a double-clickable macOS desktop `.app` using Platypus or Automator.
+  - **Local One-Click App:** Run via `streamlit run ui/streamlit_app.py` or packaged into a double-clickable macOS desktop `.app` using Platypus or Automator.
   - **Free Cloud WebApp:** Deploy to [Streamlit Community Cloud](https://streamlit.io/cloud) in 1 click connected to your private/public GitHub repo with a password gate.
 * **Verdict:** **Best overall balance of simplicity, speed, and zero infrastructure overhead.**
 
@@ -76,13 +76,13 @@ This document outlines the optimal client architecture and implementation strate
 
 ## 4. Quickstart: Running the Streamlit Client
 
-The repository includes a ready-to-run client in `clients/streamlit_app.py`.
+The repository includes a ready-to-run client in `ui/streamlit_app.py`.
 
 ```bash
 # 1. Install lightweight UI dependencies
 pip install streamlit google-genai pillow
 
 # 2. Run the application
-streamlit run clients/streamlit_app.py
+streamlit run ui/streamlit_app.py
 ```
 Open `http://localhost:8501`, drag your screenshots into the upload zone, and receive an audited campaign report in seconds.

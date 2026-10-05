@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-02
+
+### Added
+- **`story-series-extract` Skill:** Added specialized agent skill for straightforward extraction of Instagram/Facebook Story sequences and campaign creator summaries without complex arithmetic assumptions.
+- **Story Series Calculation Engine:** Added `skills/story-series-extract/scripts/extract_story_series.py` supporting series views breakdown, starting reach isolation, drop-off rate, and interactive poll/quiz extraction.
+- **Reference Templates & Synthetic Examples:** Added `examples/sample-story-series-input.json`, `examples/sample-story-series-report.md`, and `references/TEMPLATE.md`.
+- **Story Series Unit Tests:** Added `tests/test_story_series_extract.py`, bringing test suite to 20 deterministic tests.
+
+### Changed
+- **Workspace Organization:** Cleaned root workspace, isolated raw local screenshots with strict case-insensitive gitignore media rules (`*.PNG`, `*.png`, etc.).
+- **Global & Workspace Sync:** Synchronized `story-series-extract` to `.agents/skills/` and global `~/.gemini/config/skills/`.
+
 ## [1.1.0] - 2026-10-01
 
 ### Added
@@ -14,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Absence vs. Zero Safeguard:** Codified rule that unlisted metrics on platform cards remain `null/unavailable` rather than being coerced to zero.
 - **GitHub Actions CI:** Cross-platform continuous integration testing across Python 3.9–3.12 on Linux and macOS.
 - **Community Standards:** Added `CONTRIBUTING.md`, Issue Templates, PR Template, and comprehensive SOP.
-- **Client Architecture Guide & Streamlit App:** Added drag-and-drop web/desktop UI solution guide and standalone `clients/streamlit_app.py`.
+- **Client Architecture Guide & Streamlit App:** Added drag-and-drop web/desktop UI solution guide and standalone `ui/streamlit_app.py`.
 
 ### Changed
 - Sanitized all regression test suites to use purely anonymized synthetic test fixtures.

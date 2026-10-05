@@ -1,0 +1,33 @@
+{
+  "campaign": "FreshBite – Letní smoothie výzva",
+  "creator": "Kulinářský tvůrce",
+  "stories": [
+    {
+      "index": 1,
+      "views": 320,
+      "reach": 250,
+      "interactions": 12,
+      "profile_visits": 4,
+      "navigation": {
+        "forwards": 210,
+        "exited": 25,
+        "back": 15,
+        "next_story": 10
+      }
+    },
+    {
+      "index": 2,
+      "views": 280,
+      "reach": 210,
+      "interactions": 8,
+      "profile_visits": 2,
+      "poll_result": "ovocné 65 % / zeleninové 35 %",
+      "navigation": {
+        "forwards": 190,
+        "exited": 20,
+        "back": 10,
+        "next_story": 8
+      }
+    }
+  ]
+}
