@@ -89,7 +89,33 @@ Extract values directly from native Instagram Story Insights cards:
 
 ---
 
-## 4. Referenční vzor (Příklad ze vzorových dat)
+## 4. Ověření duplicit, scrollů a re-screenshotů v čase (Anti-Duplicate Protocol)
+
+> **Kritické pravidlo:** Počet screenshotů ve složce se **nerovná** počtu Stories. Tvůrci velmi často odevzdávají více screenshotů k téže jedné storce (např. posun obrazovky dolů pro zobrazení navigace nebo druhý snímek pořízený o několik hodin později pro doložení komentářů a diváků).
+
+Před jakýmkoliv vyhodnocením počtu stories a metrik musí agent provést následující kontrolu:
+
+1. **Vizuální shoda náhledu v horní liště (Story Tray):**
+   - V horní liště Instagram Insights je zobrazen zásobník aktivních příběhů za 24 hodin.
+   - Zkontrolujte miniaturu příběhu, u které je aktivní indikátor (fialový trojúhelníček / označení).
+   - Pokud mají dva screenshoty **shodný náhled, stejnou grafiku, text či téma**, jedná se o **tu samou story**, nikoli o dvě různé stories ani o repost!
+2. **Kontrola času pořízení a baterie (Status Bar):**
+   - Vždy porovnejte čas v levém horním rohu telefonu (stavová lišta, např. `10:00` vs. `09:00` následující ráno) a stav baterie.
+   - Pokud první snímek v čase `10:00` ukazuje u Story 1 zobrazení `500` a druhý snímek v čase `09:00` ukazuje `800 diváků`:
+     - Jde o **re-screenshot stejné storky pořízený s časovým odstupem**, nejčastěji pro doložení komentářů nebo seznamu diváků.
+     - **NIKDY** nezapočítávejte takový snímek jako další storku a **NIKDY** ho neklasifikujte jako „repost“.
+3. **Rozlišení vertikálního scrollu od samostatné storky:**
+   - Přehled jedné Instagram Story se skládá z několika částí (Horejšek: Views & graf, Střed: Interakce a Navigace, Spodek: Aktivita na profilu a Okruh uživatelů).
+   - Pokud snímky ze stejného času zachycují různé výškové části stránky (např. `story_part_1.png`, `story_part_2.png`, `story_part_3.png`), jde o **vertikální scrolly téže 1 storky**.
+4. **Časová konzistence pro výpočet série a Drop-off Rate:**
+   - Pro výpočet souhrnných zobrazení a míry opuštění série (Story 1 → Story 2 → Story 3) použijte data z **jednoho časového okamžiku** (stejný čas pořízení ve stavové liště).
+   - Nemíchejte průběžný stav Story 2 po 4 hodinách s finálním stavem Story 1 po 24 hodinách. Pokud je doložen finální dosah po 24 h, uveďte jej jako doplňující údaj k dané storce.
+5. **Kritéria pro skutečný Repost:**
+   - Storka je repostem Reelu/příspěvku **pouze tehdy**, pokud obsahuje nálepku přesdílení příspěvku s výzvou k přehrání a má **vlastní samostatný slot (miniaturu)** v horní liště příběhů.
+
+---
+
+## 5. Referenční vzor (Příklad ze vzorových dat)
 
 ### Vstupní data:
 - **Story 1 (Úvodní slide):**
@@ -119,7 +145,7 @@ Výsledek ankety/kvízu: ovocné 65 % / zeleninové 35 %
 
 ---
 
-## 5. Automatizační skript
+## 6. Automatizační skript
 
 Pro programatické zpracování nebo hromadné vyhodnocení je k dispozici skript:
 ```bash

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Story Series Calculation Engine:** Added `skills/story-series-extract/scripts/extract_story_series.py` supporting series views breakdown, starting reach isolation, drop-off rate, and interactive poll/quiz extraction.
 - **Reference Templates & Synthetic Examples:** Added `examples/sample-story-series-input.json`, `examples/sample-story-series-report.md`, and `references/TEMPLATE.md`.
 - **Story Series Unit Tests:** Added `tests/test_story_series_extract.py`, bringing test suite to 20 deterministic tests.
+- **Anti-Duplicate & Re-Screenshot Protocol:** Codified rules preventing overcounting of Stories due to vertical scroll slices or later timestamped re-screenshots (Story tray thumbnail matching, phone status bar timestamps, and snapshot time consistency).
 
 ### Changed
 - **Workspace Organization:** Cleaned root workspace, isolated raw local screenshots with strict case-insensitive gitignore media rules (`*.PNG`, `*.png`, etc.).

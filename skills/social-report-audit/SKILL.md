@@ -50,6 +50,11 @@ When extracting metrics from platform screenshots:
 5. **Tab & Post Deduplication:**
    - Distinguish multiple tabs of the same post (e.g., *Přehled*, *Projevený zájem*, *Okruh uživatelů*) from separate posts.
    - Merge complementary metrics belonging to the same post ID/timestamp without double-counting.
+6. **Story Deduplication & Re-screenshot Safeguard:**
+   - **Never equate the number of screenshots with the number of Stories.** An influencer often provides multiple screenshots of the same story:
+     - *Scroll slices:* Consecutive screenshots at the same timestamp (e.g. `10:00`) showing upper, middle, or lower portions of the same Story Insights screen.
+     - *Re-screenshots over time:* A later screenshot (e.g. next morning `09:00`) taken to capture comments, sticker interactions, or final viewer counts.
+   - **Mandatory check:** Verify the top Story tray thumbnail. If two screenshots have the same thumbnail, visual layout, and topic selected, they are **the exact same story**. Never count a later re-screenshot as an additional story or a "repost".
 
 ---
 
