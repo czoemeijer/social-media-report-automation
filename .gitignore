@@ -61,6 +61,12 @@ __pycache__/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+dist/
+build/
+*.egg-info/
+.venv/
+.codebase-memory/
+*.difypkg
 
 # Node & package manager
 node_modules/

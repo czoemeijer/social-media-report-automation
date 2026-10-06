@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "inference": {
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "confidence",
+        "evidence"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://social-report.local/schemas/campaign_reconstruction.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "assets": {
+      "items": {
+        "properties": {
+          "asset_group_id": {
+            "type": "string"
+          },
+          "content_format": {
+            "enum": [
+              "post",
+              "reel",
+              "story",
+              "ad",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "creator": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platform": {
+            "enum": [
+              "instagram",
+              "facebook",
+              "meta",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "relationship": {
+                  "enum": [
+                    "exact_duplicate",
+                    "near_duplicate",
+                    "same_asset_scroll_slice",
+                    "same_asset_other_tab",
+                    "same_story_later_snapshot",
+                    "different_story_same_series",
+                    "repost",
+                    "different_asset",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "source_files": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_group_id",
+          "source_files",
+          "relationships"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "campaign": {
+      "$ref": "#/$defs/inference"
+    },
+    "client": {
+      "$ref": "#/$defs/inference"
+    }
+  },
+  "required": [
+    "campaign",
+    "client",
+    "assets"
+  ],
+  "title": "Global campaign reconstruction",
+  "type": "object"
+}

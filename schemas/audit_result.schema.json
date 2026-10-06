@@ -1,0 +1,37 @@
+{
+  "$id": "https://social-report.local/schemas/audit_result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "campaign_summary": {
+      "type": "object"
+    },
+    "items": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "review_status": {
+      "enum": [
+        "verified",
+        "verified_with_warning",
+        "needs_review",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items",
+    "campaign_summary",
+    "review_status"
+  ],
+  "title": "Deterministic campaign audit",
+  "type": "object"
+}

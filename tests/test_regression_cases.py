@@ -6,18 +6,22 @@ Tests all regression cases and edge cases defined in project specifications
 using anonymized creator identifiers to protect privacy.
 """
 
-import sys
 import os
+import sys
 import unittest
 
 # Add script directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "social-report-audit", "scripts")))
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "skills", "social-report-audit", "scripts")
+    ),
+)
 
-from calculate_metrics import calculate_single_item, aggregate_campaign
+from calculate_metrics import aggregate_campaign, calculate_single_item
 
 
 class TestRegressionCases(unittest.TestCase):
-
     def test_regression_case_1_facebook(self):
         """
         REGRESSION CASE 1 — Creator A — Facebook
@@ -35,7 +39,7 @@ class TestRegressionCases(unittest.TestCase):
             "saves": 6,
             "reach": 10000,
             "reach_is_approximate": True,
-            "scope": "organic"
+            "scope": "organic",
         }
         res = calculate_single_item(item)
         self.assertEqual(res["known_engagement_actions"], 330)
@@ -60,7 +64,7 @@ class TestRegressionCases(unittest.TestCase):
             "saves": 30,
             "reach": 16000,
             "reach_is_approximate": False,
-            "scope": "organic"
+            "scope": "organic",
         }
         res = calculate_single_item(item)
         self.assertEqual(res["likes"], 1125)
@@ -84,7 +88,7 @@ class TestRegressionCases(unittest.TestCase):
             "shares": 2,
             "saves": 110,
             "reach": 7500,
-            "scope": "organic"
+            "scope": "organic",
         }
         res = calculate_single_item(item)
         self.assertEqual(res["known_engagement_actions"], 260)
@@ -108,7 +112,7 @@ class TestRegressionCases(unittest.TestCase):
             "shares": 2,
             "saves": 54,
             "reach": 6000,
-            "scope": "organic"
+            "scope": "organic",
         }
         res = calculate_single_item(item)
         self.assertEqual(res["known_engagement_actions"], 180)
@@ -129,7 +133,7 @@ class TestRegressionCases(unittest.TestCase):
             "saves": 188,
             "reach": 45000,
             "platform_reported_interactions": 1920,
-            "scope": "organic"
+            "scope": "organic",
         }
         res = calculate_single_item(item)
         self.assertEqual(res["known_engagement_actions"], 1880)
@@ -139,7 +143,6 @@ class TestRegressionCases(unittest.TestCase):
 
 
 class TestEdgeCasesAndSafety(unittest.TestCase):
-
     def test_missing_reach(self):
         item = {"likes": 100, "comments": 10, "shares": 5, "saves": 10, "reach": None}
         res = calculate_single_item(item)
@@ -157,14 +160,28 @@ class TestEdgeCasesAndSafety(unittest.TestCase):
         self.assertIsNone(res["comment_to_like_ratio_pct"])
 
     def test_paid_scope_warning(self):
-        item = {"likes": 50, "comments": 2, "shares": 1, "saves": 4, "reach": 50000, "scope": "paid"}
+        item = {
+            "likes": 50,
+            "comments": 2,
+            "shares": 1,
+            "saves": 4,
+            "reach": 50000,
+            "scope": "paid",
+        }
         res = calculate_single_item(item)
         self.assertTrue(any("Paid scope detected" in w for w in res.get("warnings", [])))
 
     def test_campaign_aggregation_warning(self):
         items = [
             {"creator": "A", "likes": 100, "comments": 10, "shares": 5, "saves": 10, "reach": 2000},
-            {"creator": "B", "likes": 200, "comments": 20, "shares": 10, "saves": 20, "reach": 3000},
+            {
+                "creator": "B",
+                "likes": 200,
+                "comments": 20,
+                "shares": 10,
+                "saves": 20,
+                "reach": 3000,
+            },
         ]
         agg = aggregate_campaign(items)
         self.assertEqual(agg["sum_of_content_reach"], 5000)
@@ -197,7 +214,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "likes": 80,
             "comments": 10,
             "saves": 10,
-            "shares": None
+            "shares": None,
         }
         res = calculate_single_item(item)
         self.assertEqual(res["known_engagement_actions"], 100)
@@ -207,7 +224,9 @@ class TestPostAuditRefinements(unittest.TestCase):
         self.assertFalse(res["er_is_complete"])
         self.assertEqual(res["er_status"], "incomplete_lower_bound")
         self.assertAlmostEqual(res["er_lower_bound_by_reach"], 10.00, places=2)
-        self.assertTrue(any("Incomplete engagement components" in w for w in res.get("warnings", [])))
+        self.assertTrue(
+            any("Incomplete engagement components" in w for w in res.get("warnings", []))
+        )
 
     def test_mixed_or_unknown_scope_via_ads_disclaimer(self):
         """
@@ -222,7 +241,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "comments": 2,
             "shares": 1,
             "saves": 3,
-            "reach": 1000
+            "reach": 1000,
         }
         res = calculate_single_item(item)
         self.assertEqual(res["scope"], "mixed_or_unknown")
@@ -237,7 +256,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "creator": "Synthetic Video Asset",
             "follows": 7,
             "external_link_taps": None,
-            "business_address_taps": 0
+            "business_address_taps": 0,
         }
         res = calculate_single_item(item)
         self.assertIsNone(res.get("external_link_taps"))
@@ -257,7 +276,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "shares": None,
             "feed_shares": 5,
             "feed_reposts": 2,
-            "reach": 8000
+            "reach": 8000,
         }
         res = calculate_single_item(item)
         self.assertIsNone(res["shares"])
@@ -298,7 +317,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "external_link_taps": 15,
             "profile_visits": 1,
             "business_address_taps": 0,
-            "follows": 0
+            "follows": 0,
         }
         reel_item = {
             "id": "reel_store_launch",
@@ -314,7 +333,7 @@ class TestPostAuditRefinements(unittest.TestCase):
             "feed_reposts": 2,
             "has_ad_disclaimer": True,
             "external_link_taps": None,
-            "follows": 5
+            "follows": 5,
         }
 
         res_post = calculate_single_item(post_item)
