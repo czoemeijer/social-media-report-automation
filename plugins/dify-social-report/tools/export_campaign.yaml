@@ -1,0 +1,42 @@
+identity:
+  name: export_campaign
+  author: czoemeijer
+  label:
+    en_US: Export campaign audit
+description:
+  human:
+    en_US: Export audited results as JSON, CSV, or deterministic Markdown.
+  llm: Produces a file without calling a model or recomputing campaign metrics.
+parameters:
+  - name: audit_json
+    type: string
+    required: true
+    label:
+      en_US: Audit JSON
+    human_description:
+      en_US: Output from the Audit campaign tool.
+    llm_description: The complete deterministic audit JSON object.
+    form: llm
+  - name: format
+    type: select
+    required: true
+    default: json
+    label:
+      en_US: Format
+    human_description:
+      en_US: Machine-readable JSON/CSV or deterministic Markdown.
+    llm_description: Use JSON and CSV for downstream systems; Markdown for a simple human-readable artifact.
+    form: form
+    options:
+      - value: json
+        label:
+          en_US: JSON
+      - value: csv
+        label:
+          en_US: CSV
+      - value: markdown
+        label:
+          en_US: Markdown
+extra:
+  python:
+    source: tools/export_campaign.py

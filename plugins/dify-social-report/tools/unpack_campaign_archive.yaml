@@ -1,0 +1,22 @@
+identity:
+  name: unpack_campaign_archive
+  author: czoemeijer
+  label:
+    en_US: Unpack campaign ZIP
+description:
+  human:
+    en_US: Safely unpack a campaign ZIP and preserve relative paths as contextual evidence.
+  llm: Rejects traversal, symlinks, nested archives, encrypted entries, and archive bombs.
+parameters:
+  - name: archive
+    type: file
+    required: true
+    label:
+      en_US: Campaign ZIP
+    human_description:
+      en_US: One ZIP containing campaign screenshots and optional human-organized folders.
+    llm_description: The ZIP file selected from the user's upload list.
+    form: llm
+extra:
+  python:
+    source: tools/unpack_campaign_archive.py

@@ -1,0 +1,22 @@
+identity:
+  name: prepare_campaign_input
+  author: czoemeijer
+  label:
+    en_US: Prepare campaign input
+description:
+  human:
+    en_US: Validate uploaded screenshots or ZIPs and create a hashed source manifest.
+  llm: Deterministic intake only. No campaign inference or image analysis is performed.
+parameters:
+  - name: files
+    type: files
+    required: true
+    label:
+      en_US: Screenshots or campaign ZIP
+    human_description:
+      en_US: PNG, JPEG, WEBP, GIF, or ZIP files. File limits are enforced by the plugin and Dify.
+    llm_description: The complete user-uploaded file list.
+    form: llm
+extra:
+  python:
+    source: tools/prepare_campaign_input.py
