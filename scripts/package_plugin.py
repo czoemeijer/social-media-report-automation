@@ -40,8 +40,9 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="dify-social-report-") as temp_dir:
         staged = Path(temp_dir) / "dify-social-report"
-        shutil.copytree(PLUGIN_SOURCE, staged)
-        shutil.copytree(CORE_SOURCE, staged / "social_report")
+        ignore_patterns = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".DS_Store")
+        shutil.copytree(PLUGIN_SOURCE, staged, ignore=ignore_patterns)
+        shutil.copytree(CORE_SOURCE, staged / "social_report", ignore=ignore_patterns)
         subprocess.run(
             [
                 cli_bin,

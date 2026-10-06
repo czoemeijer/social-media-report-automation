@@ -23,6 +23,28 @@ uv run python scripts/validate_dify_dsl.py
 Install `dist/dify-social-report-0.1.0.difypkg`, then import
 `deploy/dify/social-media-report.yml`.
 
+Alternatively, use the automated deployment helper `scripts/dify_deploy.py`:
+
+```bash
+# Discover deployment state, version, providers, vision models, limits
+uv run python scripts/dify_deploy.py discover
+
+# Verify installed plugin status & 6 tools
+uv run python scripts/dify_deploy.py plugin-status
+
+# Upload and install .difypkg
+uv run python scripts/dify_deploy.py install-plugin dist/dify-social-report-0.1.0.difypkg
+
+# Import or overwrite workflow DSL via OpenAPI / Console
+uv run python scripts/dify_deploy.py import-workflow deploy/dify/social-media-report.yml [--app-id ID]
+
+# Execute end-to-end synthetic runtime smoke test
+uv run python scripts/dify_deploy.py smoke-test <app_id> --synthetic
+
+# Export working DSL and sanitize deployment-specific bindings
+uv run python scripts/dify_deploy.py export-workflow <app_id> deploy/dify/social-media-report.yml --sanitize
+```
+
 The DSL leaves all model names empty. In Dify, select a model for each LLM node. Required
 capabilities are vision, strong UI/text reading, adequate image/context limits, and preferably native
 structured JSON output. Model/provider names are deployment choices, not repository constants.
