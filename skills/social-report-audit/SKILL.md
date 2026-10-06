@@ -7,6 +7,9 @@ description: Extract social media metrics from screenshots or raw data, validate
 
 This skill audits, validates, normalizes, and reports social media campaign metrics from Instagram and Facebook. It accepts raw numbers, platform UI screenshots, or creator folders, audits discrepancies, computes deterministic engagement indicators, and outputs structured Markdown reports.
 
+The bundled CLI is a thin wrapper over the repository's canonical `src/social_report` package. Do
+not copy formulas into this Skill. The Skill remains portable and does not depend on Dify.
+
 ---
 
 ## 1. Activation Triggers
@@ -70,7 +73,8 @@ Always classify each extracted data point into its appropriate domain:
 - **Ads Disclaimer Rule:** If the screenshot states *"Insights include data from your post/reel and any ads"*, the metrics **must not** be automatically classified as organic. Without a separate Ad breakdown, classify the scope as `mixed_or_unknown` and explicitly state: *"Organic and paid contributions cannot be separated without a separate Ad breakdown."*
 - **Never** use Paid Reach as the denominator for Organic Engagement Rate.
 - **Never** mix Paid Ad Engagements into Organic Known Engagement Actions.
-- If scope is unknown or mixed, clearly label it `Scope: mixed_or_unknown` and keep it separate.
+- If scope is unknown, label it `unknown`. Use `mixed_or_unknown` only for evidence of mixed data,
+  such as an ads disclaimer without a separate breakdown. Keep every scope bucket separate.
 
 ---
 

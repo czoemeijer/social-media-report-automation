@@ -1,0 +1,132 @@
+{
+  "case_id": "synthetic_campaign_001",
+  "reconstruction": {
+    "campaign": {
+      "name": "Autumn Pantry",
+      "confidence": 0.9,
+      "evidence": ["Autumn Pantry branding"]
+    },
+    "client": {
+      "name": "Example Foods",
+      "confidence": 0.9,
+      "evidence": ["Example Foods logo"]
+    },
+    "assets": [
+      {
+        "asset_group_id": "asset_reel_01",
+        "creator": "@alice_demo",
+        "platform": "instagram",
+        "content_format": "reel",
+        "source_files": [
+          "alice/reel-overview.png",
+          "alice/reel-interactions.png"
+        ],
+        "relationships": [
+          {
+            "file": "alice/reel-interactions.png",
+            "role": "engagement_tab",
+            "relationship": "same_asset_other_tab"
+          }
+        ]
+      },
+      {
+        "asset_group_id": "asset_story_01",
+        "creator": "@alice_demo",
+        "platform": "instagram",
+        "content_format": "story",
+        "story_id": "story_01",
+        "source_files": [
+          "alice/stories/story-1-top.png",
+          "alice/stories/story-1-bottom.png"
+        ],
+        "relationships": [
+          {
+            "file": "alice/stories/story-1-bottom.png",
+            "role": "bottom_scroll",
+            "relationship": "same_asset_scroll_slice"
+          }
+        ]
+      },
+      {
+        "asset_group_id": "asset_story_02",
+        "creator": "@alice_demo",
+        "platform": "instagram",
+        "content_format": "story",
+        "story_id": "story_02",
+        "source_files": ["alice/stories/story-2-final.png"],
+        "relationships": [
+          {
+            "file": "alice/stories/story-2-final.png",
+            "role": "final_snapshot",
+            "relationship": "different_story_same_series"
+          }
+        ]
+      },
+      {
+        "asset_group_id": "asset_paid_01",
+        "creator": null,
+        "platform": "meta",
+        "content_format": "ad",
+        "source_files": ["paid/meta-results.png"],
+        "relationships": []
+      }
+    ]
+  },
+  "assets": [
+    {
+      "asset_group_id": "asset_reel_01",
+      "creator": "@alice_demo",
+      "platform": "instagram",
+      "content_format": "reel",
+      "scope": "organic",
+      "metrics": {
+        "views": {"value": 12500, "precision": "exact", "confidence": 0.99, "source_file": "alice/reel-overview.png", "evidence_text": "12,500", "extraction_method": "vision"},
+        "reach": {"value": 8200, "precision": "exact", "confidence": 0.99, "source_file": "alice/reel-overview.png", "evidence_text": "8,200", "extraction_method": "vision"},
+        "likes": {"value": 640, "precision": "exact", "confidence": 0.99, "source_file": "alice/reel-interactions.png", "evidence_text": "640", "extraction_method": "vision"},
+        "comments": {"value": 22, "precision": "exact", "confidence": 0.99, "source_file": "alice/reel-interactions.png", "evidence_text": "22", "extraction_method": "vision"},
+        "shares": {"value": null, "precision": "missing", "confidence": 0.99, "source_file": "alice/reel-interactions.png", "evidence_text": "--", "extraction_method": "vision"},
+        "saves": {"value": 91, "precision": "exact", "confidence": 0.99, "source_file": "alice/reel-interactions.png", "evidence_text": "91", "extraction_method": "vision"}
+      },
+      "review_status": "verified"
+    },
+    {
+      "asset_group_id": "asset_story_01",
+      "creator": "@alice_demo",
+      "platform": "instagram",
+      "content_format": "story",
+      "story_id": "story_01",
+      "scope": "organic",
+      "metrics": {
+        "views": {"value": 510, "precision": "exact", "confidence": 0.99, "source_file": "alice/stories/story-1-top.png", "evidence_text": "510", "extraction_method": "vision"},
+        "reach": {"value": 470, "precision": "exact", "confidence": 0.99, "source_file": "alice/stories/story-1-top.png", "evidence_text": "470", "extraction_method": "vision"},
+        "comments": {"value": 0, "precision": "exact", "confidence": 0.99, "source_file": "alice/stories/story-1-bottom.png", "evidence_text": "0", "extraction_method": "vision"}
+      },
+      "review_status": "verified"
+    },
+    {
+      "asset_group_id": "asset_story_02",
+      "creator": "@alice_demo",
+      "platform": "instagram",
+      "content_format": "story",
+      "story_id": "story_02",
+      "scope": "organic",
+      "metrics": {
+        "views": {"value": 430, "precision": "exact", "confidence": 0.99, "source_file": "alice/stories/story-2-final.png", "evidence_text": "430", "extraction_method": "vision"},
+        "reach": {"value": 390, "precision": "exact", "confidence": 0.99, "source_file": "alice/stories/story-2-final.png", "evidence_text": "390", "extraction_method": "vision"}
+      },
+      "review_status": "verified"
+    },
+    {
+      "asset_group_id": "asset_paid_01",
+      "creator": null,
+      "platform": "meta",
+      "content_format": "ad",
+      "scope": "paid",
+      "metrics": {
+        "views": {"value": 1200, "precision": "approximate", "confidence": 0.97, "source_file": "paid/meta-results.png", "evidence_text": "1.2k", "extraction_method": "vision"},
+        "reach": {"value": 1100, "precision": "exact", "confidence": 0.99, "source_file": "paid/meta-results.png", "evidence_text": "1,100", "extraction_method": "vision"}
+      },
+      "review_status": "verified"
+    }
+  ]
+}
