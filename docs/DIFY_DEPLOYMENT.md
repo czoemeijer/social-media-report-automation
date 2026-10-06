@@ -1,58 +1,140 @@
 # Dify deployment
 
-## Compatibility baseline
+## Compatibility is component-specific
 
-- Dify: 1.14.2 or newer
-- Plugin runtime: Python 3.12
-- Dify Plugin SDK: 0.9.x
-- Dify CLI used for local package verification: 0.6.10
-- Workflow DSL export shape: 0.6.0
+| Component | Compatibility statement |
+|---|---|
+| Plugin manifest | Declares minimum Dify `1.14.2`; package shape is locally verified, not live-installed |
+| Workflow DSL | Version `0.6.0`; statically validated, not live-imported |
+| Deployment helper | Exact released API adapters for Dify `1.14.2` and `1.17.1` only |
+| Plugin SDK | `0.9.x` |
+| Plugin runtime | Python `3.12` |
+| Packaging CLI | Dify Plugin CLI `0.6.10` |
 
-The package builds and imports as Python modules locally. A live Dify installation was not available
-for an actual plugin install, workflow import, or end-to-end run, so that compatibility gate remains
-open.
+The helper fails closed on other Dify versions. Supporting another release requires checking that
+release's routes and response models and adding contract tests; GitHub `main` is not treated as a
+released API contract.
 
-## Install
+## Local credentials
+
+Copy `.env.example` to the ignored `.env.local` file and restrict its permissions:
+
+```bash
+cp .env.example .env.local
+chmod 600 .env.local
+```
+
+Alternatively use `~/.config/social-report/dify.env` or pass `--env-file PATH`. Precedence, from
+lowest to highest, is user config, repository `.env.local`, explicit env file, process environment,
+and explicit command-line values.
+
+The three credentials are deliberately distinct:
+
+- `DIFY_OPENAPI_TOKEN`: account-scoped OAuth bearer used by the Dify `1.17.1` OpenAPI.
+- `DIFY_CONSOLE_ACCESS_TOKEN`: existing authenticated Console access token.
+- `DIFY_CSRF_TOKEN`: matching Console CSRF header/cookie token.
+
+An App Service API key is not accepted as a fallback. The helper never logs complete tokens. Do not
+commit `.env.local`, user configuration, cookies, passwords, or provider credentials.
+
+## Build and discover
 
 ```bash
 uv sync --extra dev
 uv run python scripts/package_plugin.py
 uv run python scripts/validate_dify_dsl.py
+uv run python scripts/dify_deploy.py discover
 ```
 
-Install `dist/dify-social-report-0.1.0.difypkg`, then import
-`deploy/dify/social-media-report.yml`.
+Discovery uses the unauthenticated `GET /openapi/v1/_version` and `_health` routes on `1.17.1`, or
+the released Console version route on `1.14.2`. Authenticated capabilities are reported separately
+as `VERIFIED`, `UNAVAILABLE`, `UNAUTHORIZED`, `UNSUPPORTED_VERSION`, or `ERROR`. When Console auth
+is configured, discovery lists only configured LLM models that advertise vision/multimodal support;
+it does not read or modify provider secret values.
 
-Alternatively, use the automated deployment helper `scripts/dify_deploy.py`:
+## Install and verify the plugin
 
 ```bash
-# Discover deployment state, version, providers, vision models, limits
-uv run python scripts/dify_deploy.py discover
-
-# Verify installed plugin status & 6 tools
+uv run python scripts/dify_deploy.py install-plugin
 uv run python scripts/dify_deploy.py plugin-status
-
-# Upload and install .difypkg
-uv run python scripts/dify_deploy.py install-plugin dist/dify-social-report-0.1.0.difypkg
-
-# Import or overwrite workflow DSL via OpenAPI / Console
-uv run python scripts/dify_deploy.py import-workflow deploy/dify/social-media-report.yml [--app-id ID]
-
-# Execute end-to-end synthetic runtime smoke test
-uv run python scripts/dify_deploy.py smoke-test <app_id> --synthetic
-
-# Export working DSL and sanitize deployment-specific bindings
-uv run python scripts/dify_deploy.py export-workflow <app_id> deploy/dify/social-media-report.yml --sanitize
 ```
 
-The DSL leaves all model names empty. In Dify, select a model for each LLM node. Required
-capabilities are vision, strong UI/text reading, adequate image/context limits, and preferably native
-structured JSON output. Model/provider names are deployment choices, not repository constants.
+The helper uses the released Console contracts:
+
+- `POST /console/api/workspaces/current/plugin/upload/pkg`, multipart field `pkg`;
+- `POST /console/api/workspaces/current/plugin/install/pkg` with `plugin_unique_identifiers`;
+- bounded polling of `/plugin/tasks/{task_id}` using its wrapped `task` object;
+- `/plugin/list` plus `/tool-providers` verification.
+
+`PASS` requires the exact unique identifier, version, checksum, loaded provider, and the six tool
+names derived from `provider/social_report.yaml`. An empty tool response is `PARTIAL`, never a pass.
+
+## Import or update the draft
+
+For automated model binding, select an already configured model returned by `discover`:
+
+```dotenv
+DIFY_MODEL_PROVIDER=provider-identifier
+DIFY_MODEL_NAME=vision-model-name
+```
+
+Then run:
+
+```bash
+uv run python scripts/dify_deploy.py import-workflow
+```
+
+The deployment copy is parsed as YAML and only LLM `model.provider` and `model.name` fields are
+bound. The public repository DSL remains provider-independent. Binding fails unless the Console API
+confirms an active configured vision model.
+
+Import is idempotent by exact app name or explicit `--app-id`. Ambiguous duplicate names fail. On
+`1.17.1`, the helper uses account-scoped OpenAPI import and its `:confirm` route. On `1.14.2`, it
+uses the released Console `/apps/imports` and `/confirm` routes. Both paths require an empty
+`leaked_dependencies` result before success.
+
+## Draft and published runtime tests
+
+Draft execution is the default and requires Console credentials:
+
+```bash
+uv run python scripts/dify_deploy.py smoke-test APP_ID --synthetic direct
+uv run python scripts/dify_deploy.py smoke-test APP_ID --synthetic zip
+```
+
+For a published Dify `1.17.1` app, use:
+
+```bash
+uv run python scripts/dify_deploy.py smoke-test APP_ID --synthetic direct --mode published
+```
+
+The helper uploads each file through the version-specific released endpoint and supplies the file
+objects to the workflow's `inputs.files` variable. A pass requires:
+
+- `status == succeeded`;
+- non-empty `report_markdown`;
+- structured `audit_json` with a valid review status, all four scope buckets, and warnings list;
+- non-empty `json_files` and `csv_files` arrays.
+
+The combined live check is opt-in so normal CI cannot spend model credits:
+
+```bash
+DIFY_LIVE_TEST=1 uv run python scripts/dify_deploy.py verify-live APP_ID --synthetic zip
+```
+
+## Safe export
+
+```bash
+uv run python scripts/dify_deploy.py export-workflow APP_ID
+```
+
+Exports always request `include_secret=false`. Model bindings are cleared structurally, never with
+regular expressions, and the exported graph/tool/edge structure must match the repository DSL
+before a file is written.
 
 ## Self-hosted file limits
 
-Current upstream Dify exposes these environment variables. Inspect the variables available in the
-exact deployed release before changing them:
+Inspect the variables exposed by the exact deployed release before changing them:
 
 ```dotenv
 UPLOAD_FILE_SIZE_LIMIT=25
@@ -63,26 +145,9 @@ WORKFLOW_FILE_UPLOAD_LIMIT=30
 SINGLE_CHUNK_ATTACHMENT_LIMIT=30
 ```
 
-Values for size limits are megabytes. Restart the relevant Dify services after changing deployment
-configuration. The committed workflow mirrors a 30-file, 25 MB-per-file operator target. The plugin
-adds its own safeguards: 100 files maximum, 25 MB per file, 100 MB total ZIP uncompressed size
-(safely bounded within the 256 MiB plugin memory limit), and a 100:1 per-entry compression-ratio ceiling.
+Restart the relevant Dify services after deployment configuration changes. The plugin separately
+enforces 100 files maximum, 25 MiB per file, 100 MiB total ZIP uncompressed size, nested archive
+rejection, and a 100:1 per-entry compression-ratio ceiling.
 
-For campaigns larger than the configured limits, use a ZIP to preserve directory evidence and split
-truly large campaigns into coherent runs. The workflow uses a low-detail global pass and sends only
-the current asset group's images to each detailed extraction iteration.
-
-## Import and runtime verification checklist
-
-1. Install the `.difypkg` without manifest or dependency errors.
-2. Import the DSL without node migration warnings.
-3. Bind one suitable model to the four LLM nodes.
-4. Run a direct multi-image synthetic case.
-5. Run the generated synthetic ZIP/folder case.
-6. Confirm one Reel with multiple tabs becomes one asset.
-7. Confirm Story scroll slices and later snapshots are grouped correctly.
-8. Confirm missing Shares remains null and yields only a lower-bound ER.
-9. Confirm organic and paid buckets remain separate.
-10. Export JSON and CSV; retain the Dify run record as evidence.
-
-Only after these checks may the DSL be called runtime verified for that Dify/model combination.
+Only record `LIVE_DIFY_VERIFIED` after plugin installation, dependency checking, model binding, and
+the required synthetic draft scenarios have actually completed on the named Dify/model combination.

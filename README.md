@@ -49,23 +49,29 @@ structured output, deterministic validation, and a confidence-gated second pass 
 
 ## Dify quickstart
 
-Requirements: self-hosted Dify 1.14.2 or newer, Python 3.12 plugin runtime, Dify Plugin SDK 0.9.x,
-and an installed vision-capable model with reliable UI text reading. Structured output support is
-preferred.
+Requirements: Python 3.12 plugin runtime, Dify Plugin SDK 0.9.x, and an installed vision-capable
+model with reliable UI text reading. The plugin manifest declares Dify 1.14.2 as its minimum; the
+deployment helper is deliberately pinned to the released 1.14.2 and 1.17.1 API contracts. See the
+[component-specific compatibility matrix](docs/DIFY_DEPLOYMENT.md) rather than assuming one broad
+minimum for every operation.
 
 ```bash
 uv sync --extra dev
 uv run python scripts/package_plugin.py
+cp .env.example .env.local
+chmod 600 .env.local
+uv run python scripts/dify_deploy.py discover
 ```
 
 Then:
 
-1. Install `dist/dify-social-report-0.1.0.difypkg` in Dify.
-2. Import `deploy/dify/social-media-report.yml` as a Workflow app.
-3. Select the same suitable vision model in the reconstruction, extraction, second-pass, and report
+1. Configure distinct account OpenAPI and Console/CSRF credentials in the ignored `.env.local`.
+2. Install and verify `dist/dify-social-report-0.1.0.difypkg` with `dify_deploy.py install-plugin`.
+3. Import or update `deploy/dify/social-media-report.yml` with `dify_deploy.py import-workflow`.
+4. Select the same suitable vision model in the reconstruction, extraction, second-pass, and report
    writer LLM nodes. The committed DSL intentionally has no provider/model hard-code.
-4. Review deployment file limits and retention settings in [Dify deployment](docs/DIFY_DEPLOYMENT.md).
-5. Upload screenshots or one ZIP and run the workflow.
+5. Review deployment file limits and retention settings in [Dify deployment](docs/DIFY_DEPLOYMENT.md).
+6. Run the direct-image and ZIP synthetic draft tests before publishing.
 
 The plugin package shape and imports are locally verified. The DSL is statically validated but has
 not been imported into a live Dify instance in this repository environment; see the status table

@@ -49,6 +49,7 @@ REPORT_*.md
 .env
 .env.*
 *.env
+!.env.example
 *.pem
 *.key
 .streamlit/secrets.toml
