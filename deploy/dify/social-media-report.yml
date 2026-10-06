@@ -10,7 +10,7 @@ dependencies:
   - current_identifier: null
     type: package
     value:
-      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.0@e9a957c6c99586e567f545bc7e2c842cdc2e7e488d12b74120a34b6b97ac057d
+      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.0@9f1de1d1d85576c7ebf3bb793320413eb7aa5db1874884c42db96ec86a1f4d0a
 kind: app
 version: 0.6.0
 workflow:
@@ -146,17 +146,59 @@ workflow:
         targetHandle: target
         type: custom
         zIndex: 0
-      - data: {isInIteration: false, isInLoop: false, sourceType: if-else, targetType: llm}
-        id: review_gate-review-second_pass-target
+      - data: {isInIteration: false, isInLoop: false, sourceType: if-else, targetType: code}
+        id: review_gate-review-filter_review_assets-target
         source: review_gate
         sourceHandle: review
-        target: second_pass
+        target: filter_review_assets
         targetHandle: target
         type: custom
         zIndex: 0
-      - data: {isInIteration: false, isInLoop: false, sourceType: llm, targetType: tool}
-        id: second_pass-source-second_validate-target
-        source: second_pass
+      - data: {isInIteration: false, isInLoop: false, sourceType: code, targetType: iteration}
+        id: filter_review_assets-source-review_iteration-target
+        source: filter_review_assets
+        sourceHandle: source
+        target: review_iteration
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: true
+          isInLoop: false
+          iteration_id: review_iteration
+          sourceType: iteration-start
+          targetType: tool
+        id: review_iterationstart-source-select_review_files-target
+        source: review_iterationstart
+        sourceHandle: source
+        target: select_review_files
+        targetHandle: target
+        type: custom
+        zIndex: 1002
+      - data:
+          isInIteration: true
+          isInLoop: false
+          iteration_id: review_iteration
+          sourceType: tool
+          targetType: llm
+        id: select_review_files-source-second_pass-target
+        source: select_review_files
+        sourceHandle: source
+        target: second_pass
+        targetHandle: target
+        type: custom
+        zIndex: 1002
+      - data: {isInIteration: false, isInLoop: false, sourceType: iteration, targetType: code}
+        id: review_iteration-source-merge_reviewed_assets-target
+        source: review_iteration
+        sourceHandle: source
+        target: merge_reviewed_assets
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data: {isInIteration: false, isInLoop: false, sourceType: code, targetType: tool}
+        id: merge_reviewed_assets-source-second_validate-target
+        source: merge_reviewed_assets
         sourceHandle: source
         target: second_validate
         targetHandle: target
@@ -618,25 +660,146 @@ workflow:
         type: custom
         width: 260
       - data:
+          code: |-
+            def main(campaign: dict) -> dict:
+                assets = campaign.get("assets", []) if isinstance(campaign, dict) else []
+                review_assets = [
+                    a for a in assets
+                    if isinstance(a, dict) and a.get("review_status") in ("needs_review", "rejected")
+                ]
+                return {"review_assets": review_assets}
+          code_language: python3
+          desc: Filter assets requiring review.
+          outputs:
+            review_assets: {children: null, type: 'array[object]'}
+          selected: false
+          title: Filter review assets
+          type: code
+          variables:
+            - value_selector: [validate, validated]
+              value_type: object
+              variable: campaign
+        height: 100
+        id: filter_review_assets
+        position: {x: 2980, y: 180}
+        positionAbsolute: {x: 2980, y: 180}
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 250
+      - data:
+          desc: Targeted review of low-confidence or disputed assets only.
+          error_strategy: parallel-continue
+          is_parallel: true
+          iterator_selector: [filter_review_assets, review_assets]
+          output_selector: [second_pass, structured_output]
+          output_type: array[object]
+          parallel_nums: 4
+          selected: false
+          start_node_id: review_iterationstart
+          title: Review iteration
+          type: iteration
+        height: 310
+        id: review_iteration
+        position: {x: 3280, y: 100}
+        positionAbsolute: {x: 3280, y: 100}
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 690
+        zIndex: 1
+      - data: {desc: '', isInIteration: true, selected: false, title: '', type: iteration-start}
+        draggable: false
+        height: 48
+        id: review_iterationstart
+        parentId: review_iteration
+        position: {x: 24, y: 108}
+        positionAbsolute: {x: 3304, y: 208}
+        selectable: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom-iteration-start
+        width: 44
+        zIndex: 1002
+      - data:
+          desc: Restrict vision context strictly to the current asset under review.
+          isInIteration: true
+          iteration_id: review_iteration
+          output_schema:
+            type: object
+            properties:
+              files: {type: array, items: {type: file}}
+              selected_count: {type: number}
+          paramSchemas:
+            - {name: files, type: files, required: true, form: llm, label: {en_US: Files}, human_description: {en_US: Canonical files}, llm_description: Canonical files}
+            - {name: asset, type: object, required: true, form: llm, label: {en_US: Asset}, human_description: {en_US: Reconstructed asset}, llm_description: Current asset}
+          params: {files: '', asset: ''}
+          provider_id: czoemeijer/dify-social-report/social_report
+          provider_name: czoemeijer/dify-social-report/social_report
+          provider_type: builtin
+          selected: false
+          title: Select review files
+          tool_configurations: {}
+          tool_description: Select screenshots for the current asset group.
+          tool_label: Select asset files
+          tool_name: select_asset_files
+          tool_node_version: '2'
+          tool_parameters:
+            files: {type: variable, value: [normalize, files]}
+            asset: {type: variable, value: [review_iteration, item]}
+          type: tool
+        height: 110
+        id: select_review_files
+        parentId: review_iteration
+        position: {x: 105, y: 105}
+        positionAbsolute: {x: 3385, y: 205}
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 250
+        zIndex: 1002
+      - data:
           context: {enabled: false, variable_selector: []}
-          desc: Targeted conflict review, invoked only when validation requests it.
+          desc: Targeted conflict review for a single asset.
+          isInIteration: true
+          iteration_id: review_iteration
           memory: {enabled: false, window: {enabled: false, size: 20}}
           model: {completion_params: {temperature: 0}, mode: chat, name: '', provider: ''}
           prompt_template:
             - role: system
               text: >-
-                Review only the low-confidence or conflicting fields in the supplied validated
-                extraction. Preserve all supported values. Return a complete corrected assets object.
+                Review only the low-confidence or conflicting fields for this single asset.
+                Preserve all verified fields. Return the corrected single asset object.
             - role: user
               text: |-
-                Validated extraction and warnings: {{#validate.validated_json#}}
+                Asset context: {{#review_iteration.item#}}
           selected: false
           structured_output:
             schema:
               type: object
-              required: [assets]
+              required: [asset_group_id, platform, content_format, scope, metrics, review_status]
               properties:
-                assets: {type: array, items: {type: object}}
+                asset_group_id: {type: string}
+                creator: {type: [string, 'null']}
+                platform: {type: string, enum: [instagram, facebook, meta, unknown]}
+                content_format: {type: string, enum: [post, reel, story, ad, unknown]}
+                scope: {type: string, enum: [organic, paid, mixed_or_unknown, unknown]}
+                has_ad_disclaimer: {type: boolean}
+                source_files: {type: array, items: {type: string}}
+                metrics:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    required: [value, precision]
+                    properties:
+                      value: {type: [number, 'null'], minimum: 0}
+                      precision: {type: string, enum: [exact, approximate, missing, unreadable]}
+                      confidence: {type: [number, 'null'], minimum: 0, maximum: 1}
+                      source_file: {type: [string, 'null']}
+                      evidence_text: {type: [string, 'null']}
+                      extraction_method: {type: string, enum: [vision, manual, ocr]}
+                review_status: {type: string, enum: [verified, verified_with_warning, needs_review, rejected]}
+                warnings: {type: array, items: {type: string}}
           structured_output_enabled: true
           title: Targeted second pass
           type: llm
@@ -645,15 +808,57 @@ workflow:
             enabled: true
             configs:
               detail: high
-              variable_selector: [normalize, files]
-        height: 145
+              variable_selector: [select_review_files, files]
+        height: 150
         id: second_pass
-        position: {x: 2980, y: 180}
-        positionAbsolute: {x: 2980, y: 180}
+        parentId: review_iteration
+        position: {x: 405, y: 105}
+        positionAbsolute: {x: 3685, y: 205}
         sourcePosition: right
         targetPosition: left
         type: custom
-        width: 270
+        width: 250
+        zIndex: 1002
+      - data:
+          code: |-
+            def main(original_campaign: dict, corrected_assets: list) -> dict:
+                orig_assets = original_campaign.get("assets", []) if isinstance(original_campaign, dict) else []
+                corrected_map = {}
+                for a in (corrected_assets or []):
+                    if isinstance(a, dict) and a.get("asset_group_id"):
+                        corrected_map[a["asset_group_id"]] = a
+
+                merged_assets = []
+                for a in orig_assets:
+                    gid = a.get("asset_group_id") if isinstance(a, dict) else None
+                    if gid and gid in corrected_map:
+                        merged_assets.append(corrected_map[gid])
+                    else:
+                        merged_assets.append(a)
+
+                return {"campaign": {"assets": merged_assets}}
+          code_language: python3
+          desc: Merge reviewed assets while preserving non-reviewed assets byte-for-byte.
+          outputs:
+            campaign: {children: null, type: object}
+          selected: false
+          title: Merge reviewed assets
+          type: code
+          variables:
+            - value_selector: [validate, validated]
+              value_type: object
+              variable: original_campaign
+            - value_selector: [review_iteration, output]
+              value_type: array[object]
+              variable: corrected_assets
+        height: 100
+        id: merge_reviewed_assets
+        position: {x: 4030, y: 180}
+        positionAbsolute: {x: 4030, y: 180}
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 250
       - data:
           desc: Validate second-pass output with the same deterministic core.
           output_schema:
@@ -675,12 +880,12 @@ workflow:
           tool_name: validate_extraction
           tool_node_version: '2'
           tool_parameters:
-            extraction_json: {type: variable, value: [second_pass, structured_output]}
+            extraction_json: {type: variable, value: [merge_reviewed_assets, campaign]}
           type: tool
         height: 110
         id: second_validate
-        position: {x: 3290, y: 180}
-        positionAbsolute: {x: 3290, y: 180}
+        position: {x: 4340, y: 180}
+        positionAbsolute: {x: 4340, y: 180}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -697,8 +902,8 @@ workflow:
             - [validate, validated]
         height: 130
         id: validated_merge
-        position: {x: 3600, y: 320}
-        positionAbsolute: {x: 3600, y: 320}
+        position: {x: 4660, y: 320}
+        positionAbsolute: {x: 4660, y: 320}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -728,8 +933,8 @@ workflow:
           type: tool
         height: 110
         id: audit
-        position: {x: 3910, y: 320}
-        positionAbsolute: {x: 3910, y: 320}
+        position: {x: 4980, y: 320}
+        positionAbsolute: {x: 4980, y: 320}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -758,8 +963,8 @@ workflow:
           vision: {enabled: false, configs: {variable_selector: []}}
         height: 135
         id: report_writer
-        position: {x: 4240, y: 180}
-        positionAbsolute: {x: 4240, y: 180}
+        position: {x: 5310, y: 180}
+        positionAbsolute: {x: 5310, y: 180}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -794,8 +999,8 @@ workflow:
           type: tool
         height: 110
         id: export_json
-        position: {x: 4240, y: 330}
-        positionAbsolute: {x: 4240, y: 330}
+        position: {x: 5310, y: 330}
+        positionAbsolute: {x: 5310, y: 330}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -830,8 +1035,8 @@ workflow:
           type: tool
         height: 110
         id: export_csv
-        position: {x: 4240, y: 480}
-        positionAbsolute: {x: 4240, y: 480}
+        position: {x: 5310, y: 480}
+        positionAbsolute: {x: 5310, y: 480}
         sourcePosition: right
         targetPosition: left
         type: custom
@@ -856,8 +1061,8 @@ workflow:
           type: end
         height: 150
         id: end
-        position: {x: 4580, y: 320}
-        positionAbsolute: {x: 4580, y: 320}
+        position: {x: 5650, y: 320}
+        positionAbsolute: {x: 5650, y: 320}
         sourcePosition: right
         targetPosition: left
         type: custom

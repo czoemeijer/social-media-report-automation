@@ -8,6 +8,19 @@ import json
 from typing import Any, Mapping
 
 
+def sanitize_csv_cell(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection characters at serialization boundary."""
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if (
+        value.startswith(("\t", "\r", "\n"))
+        or (stripped and stripped[0] in ("=", "+", "-", "@"))
+    ):
+        return f"'{value}"
+    return value
+
+
 def export_json(payload: Mapping[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
 
@@ -32,16 +45,30 @@ def export_csv(payload: Mapping[str, Any]) -> bytes:
         "review_status",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
-    writer.writeheader()
-    for item in payload.get("items", []):
+    raw_items = payload.get("items") or payload.get("assets") or []
+    for item in raw_items:
         if isinstance(item, Mapping):
-            writer.writerow(item)
+            safe_item = {k: sanitize_csv_cell(v) for k, v in item.items()}
+            writer.writerow(safe_item)
     return output.getvalue().encode("utf-8-sig")
 
 
 def export_markdown(payload: Mapping[str, Any]) -> bytes:
     summary = payload.get("campaign_summary", {})
-    lines = ["# Campaign audit", "", f"Status: {payload.get('review_status', 'unknown')}", ""]
+    status = str(payload.get("review_status", "unknown"))
+    lines = ["# Campaign audit", "", f"Status: {status}", ""]
+    if status in {"needs_review", "rejected"}:
+        lines.extend(
+            [
+                "> [!WARNING]",
+                (
+                    f"> Review status is **{status.upper()}**. This report contains unverified, "
+                    "low-confidence, or rejected assets that require operator review "
+                    "before sharing."
+                ),
+                "",
+            ]
+        )
     for scope, bucket in summary.get("scope_buckets", {}).items():
         if not bucket.get("asset_count"):
             continue

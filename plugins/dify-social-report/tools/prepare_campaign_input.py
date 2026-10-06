@@ -39,5 +39,5 @@ class PrepareCampaignInputTool(Tool):
         for file in prepared:
             yield self.create_blob_message(
                 file.content,
-                meta={"filename": file.filename, "mime_type": file.mime_type},
+                meta={"filename": file.transport_name, "mime_type": file.mime_type},
             )

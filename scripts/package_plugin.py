@@ -14,6 +14,14 @@ PLUGIN_SOURCE = ROOT / "plugins" / "dify-social-report"
 CORE_SOURCE = ROOT / "src" / "social_report"
 
 
+def find_dify_cli() -> str:
+    for candidate in ("dify", "dify-plugin", "/tmp/dify-plugin"):
+        resolved = shutil.which(candidate) if not candidate.startswith("/") else candidate
+        if resolved and Path(resolved).exists():
+            return str(resolved)
+    return "dify"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -21,8 +29,13 @@ def main() -> None:
         type=Path,
         default=ROOT / "dist" / "dify-social-report-0.1.0.difypkg",
     )
-    parser.add_argument("--cli", default="dify", help="Path to the official Dify CLI binary.")
+    parser.add_argument(
+        "--cli",
+        default=None,
+        help="Path to the official Dify CLI binary.",
+    )
     args = parser.parse_args()
+    cli_bin = args.cli or find_dify_cli()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="dify-social-report-") as temp_dir:
@@ -31,7 +44,7 @@ def main() -> None:
         shutil.copytree(CORE_SOURCE, staged / "social_report")
         subprocess.run(
             [
-                args.cli,
+                cli_bin,
                 "plugin",
                 "package",
                 str(staged),

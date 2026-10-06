@@ -52,6 +52,7 @@ INPUT_MANIFEST_SCHEMA: Dict[str, Any] = {
                     "source_id": {"type": "string"},
                     "relative_path": {"type": ["string", "null"]},
                     "filename": {"type": "string"},
+                    "transport_name": {"type": "string"},
                     "mime_type": {"type": "string"},
                     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
                     "size": {"type": "integer", "minimum": 1},

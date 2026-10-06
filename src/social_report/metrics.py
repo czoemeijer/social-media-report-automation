@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Union, cast
 
 from .schemas import SCOPES
-from .validation import flatten_asset_metrics, validate_extraction
+from .validation import flatten_asset_metrics, merge_review_status, validate_extraction
 
 ENGAGEMENT_COMPONENTS = ("likes", "comments", "shares", "saves")
 Number = Union[int, float]
@@ -96,6 +96,13 @@ def calculate_single_item(item: Mapping[str, Any]) -> Dict[str, Any]:
         result["uncategorized_interactions"] = None
 
     reach_is_approximate = bool(item.get("reach_is_approximate", False))
+    contributing_approximate = any(
+        bool(item.get(f"{name}_is_approximate", False))
+        for name in ENGAGEMENT_COMPONENTS
+        if values.get(name) is not None
+    )
+    er_is_approximate = reach_is_approximate or contributing_approximate
+
     if reach is not None and reach > 0 and known_actions is not None:
         engagement_rate = round((known_actions / reach) * 100.0, 4)
         if missing:
@@ -112,7 +119,7 @@ def calculate_single_item(item: Mapping[str, Any]) -> Dict[str, Any]:
             result["er_lower_bound_by_reach"] = None
             result["er_is_complete"] = True
             result["er_status"] = "complete"
-        result["er_is_approximate"] = reach_is_approximate
+        result["er_is_approximate"] = er_is_approximate
     else:
         result["calculated_er_by_reach"] = None
         result["er_lower_bound_by_reach"] = None
@@ -121,19 +128,38 @@ def calculate_single_item(item: Mapping[str, Any]) -> Dict[str, Any]:
         result["er_is_approximate"] = False
 
     saves = values["saves"]
+    saves_is_approximate = bool(item.get("saves_is_approximate", False))
     result["save_rate_pct"] = (
         round((saves / reach) * 100.0, 4)
         if reach is not None and reach > 0 and saves is not None
         else None
     )
+    result["save_rate_is_approximate"] = (
+        bool(reach_is_approximate or saves_is_approximate)
+        if result["save_rate_pct"] is not None
+        else False
+    )
+
     likes = values["likes"]
     comments = values["comments"]
+    likes_is_approximate = bool(item.get("likes_is_approximate", False))
+    comments_is_approximate = bool(item.get("comments_is_approximate", False))
     result["comment_to_like_ratio_pct"] = (
         round((comments / likes) * 100.0, 4)
         if likes is not None and likes > 0 and comments is not None
         else None
     )
-    result["review_status"] = "verified_with_warning" if warnings else "verified"
+    result["comment_to_like_ratio_is_approximate"] = (
+        bool(likes_is_approximate or comments_is_approximate)
+        if result["comment_to_like_ratio_pct"] is not None
+        else False
+    )
+
+    initial_status = item.get("review_status", "verified")
+    if warnings:
+        result["review_status"] = merge_review_status(initial_status, "verified_with_warning")
+    else:
+        result["review_status"] = initial_status
     return result
 
 
@@ -199,6 +225,57 @@ def _aggregate_bucket(items: List[Mapping[str, Any]], scope: str) -> Dict[str, A
     summary["overall_comment_to_like_ratio_pct"] = (
         round((comments / likes) * 100.0, 4) if likes and comments is not None else None
     )
+
+    any_reach_approx = any(
+        bool(item.get("reach_is_approximate", False))
+        for item in audited
+        if item.get("reach") is not None
+    )
+    any_action_approx = any(
+        bool(item.get(f"{name}_is_approximate", False))
+        for item in audited
+        for name in ENGAGEMENT_COMPONENTS
+        if item.get(name) is not None
+    )
+    any_saves_approx = any(
+        bool(item.get("saves_is_approximate", False))
+        for item in audited
+        if item.get("saves") is not None
+    )
+    any_likes_approx = any(
+        bool(item.get("likes_is_approximate", False))
+        for item in audited
+        if item.get("likes") is not None
+    )
+    any_comments_approx = any(
+        bool(item.get("comments_is_approximate", False))
+        for item in audited
+        if item.get("comments") is not None
+    )
+    summary["sum_of_content_reach_is_approximate"] = (
+        any_reach_approx if summary["sum_of_content_reach"] is not None else False
+    )
+    summary["total_known_engagement_actions_is_approximate"] = (
+        any_action_approx if summary["total_known_engagement_actions"] is not None else False
+    )
+    summary["weighted_er_is_approximate"] = bool(
+        (any_reach_approx or any_action_approx)
+        and (
+            summary.get("weighted_calculated_er_by_reach") is not None
+            or summary.get("weighted_er_lower_bound_by_reach") is not None
+        )
+    )
+    summary["overall_save_rate_is_approximate"] = bool(
+        (any_reach_approx or any_saves_approx)
+        if summary.get("overall_save_rate_pct") is not None
+        else False
+    )
+    summary["overall_comment_to_like_ratio_is_approximate"] = bool(
+        (any_likes_approx or any_comments_approx)
+        if summary.get("overall_comment_to_like_ratio_pct") is not None
+        else False
+    )
+
     platform = summary["total_platform_reported_interactions"]
     if platform is not None and actions is not None:
         discrepancy = platform - actions
@@ -265,10 +342,11 @@ def audit_campaign(payload: Mapping[str, Any]) -> Dict[str, Any]:
     audited_items = [calculate_single_item(item) for item in flat_items]
     campaign_summary = aggregate_campaign(flat_items)
     warnings = list(validated["warnings"])
-    warnings.extend(campaign_summary.get("warnings", []))
-    status = validated["review_status"]
-    if status == "verified" and warnings:
-        status = "verified_with_warning"
+    validated_status = validated["review_status"]
+    item_statuses = [item.get("review_status", "verified") for item in audited_items]
+    status = merge_review_status(validated_status, *item_statuses)
+    if warnings:
+        status = merge_review_status(status, "verified_with_warning")
     return {
         "items": audited_items,
         "campaign_summary": campaign_summary,

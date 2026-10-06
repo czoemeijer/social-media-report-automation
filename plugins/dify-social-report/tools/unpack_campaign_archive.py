@@ -22,7 +22,7 @@ class UnpackCampaignArchiveTool(Tool):
         uploaded = tool_parameters.get("files")
         if not isinstance(uploaded, list) or not uploaded:
             raise ValueError("files must contain at least one Dify file")
-        image_files = []
+        manifest_entries = []
         archive_roots = []
         ignored_entries = []
         for index, file in enumerate(uploaded, start=1):
@@ -37,22 +37,34 @@ class UnpackCampaignArchiveTool(Tool):
             prepared = prepare_campaign_input([source])[0]
             if prepared.mime_type == "application/zip":
                 unpacked = unpack_campaign_archive(source)
-                image_files.extend(unpacked.files)
                 archive_roots.append(unpacked.root)
                 ignored_entries.extend(unpacked.ignored_entries)
+                for entry in unpacked.files:
+                    manifest_entries.append(entry.manifest_entry())
+                    yield self.create_blob_message(
+                        entry.content,
+                        meta={
+                            "filename": entry.transport_name,
+                            "mime_type": entry.mime_type,
+                        },
+                    )
+                del unpacked
             else:
-                image_files.append(prepared)
+                manifest_entries.append(prepared.manifest_entry())
+                yield self.create_blob_message(
+                    prepared.content,
+                    meta={
+                        "filename": prepared.transport_name,
+                        "mime_type": prepared.mime_type,
+                    },
+                )
+                del prepared
         manifest = {
             "root": archive_roots[0] if len(archive_roots) == 1 else None,
             "archive_roots": archive_roots,
-            "entries": [file.manifest_entry() for file in image_files],
+            "entries": manifest_entries,
             "ignored_entries": ignored_entries,
         }
         yield self.create_json_message(manifest)
         yield self.create_variable_message("manifest", manifest)
         yield self.create_variable_message("manifest_json", compact_json(manifest))
-        for file in image_files:
-            yield self.create_blob_message(
-                file.content,
-                meta={"filename": file.relative_path or file.filename, "mime_type": file.mime_type},
-            )

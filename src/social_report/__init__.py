@@ -2,12 +2,13 @@
 
 from .metrics import aggregate_campaign, audit_campaign, calculate_single_item
 from .stories import summarize_story_series
-from .validation import validate_extraction
+from .validation import merge_review_status, validate_extraction
 
 __all__ = [
     "aggregate_campaign",
     "audit_campaign",
     "calculate_single_item",
+    "merge_review_status",
     "summarize_story_series",
     "validate_extraction",
 ]

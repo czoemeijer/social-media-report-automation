@@ -43,8 +43,8 @@ SINGLE_CHUNK_ATTACHMENT_LIMIT=30
 
 Values for size limits are megabytes. Restart the relevant Dify services after changing deployment
 configuration. The committed workflow mirrors a 30-file, 25 MB-per-file operator target. The plugin
-adds its own safeguards: 100 files maximum, 25 MB per file, 500 MB total ZIP uncompressed size, and
-a 100:1 per-entry compression-ratio ceiling.
+adds its own safeguards: 100 files maximum, 25 MB per file, 100 MB total ZIP uncompressed size
+(safely bounded within the 256 MiB plugin memory limit), and a 100:1 per-entry compression-ratio ceiling.
 
 For campaigns larger than the configured limits, use a ZIP to preserve directory evidence and split
 truly large campaigns into coherent runs. The workflow uses a low-detail global pass and sends only

@@ -24,6 +24,26 @@ KNOWN_METRICS = {
 }
 
 
+REVIEW_STATUS_ORDER: Dict[str, int] = {
+    "verified": 0,
+    "verified_with_warning": 1,
+    "needs_review": 2,
+    "rejected": 3,
+}
+
+
+def merge_review_status(*statuses: str | None) -> str:
+    """Return the most severe review status across candidates.
+
+    Severity lattice:
+    verified < verified_with_warning < needs_review < rejected
+    """
+    valid = [s for s in statuses if s in REVIEW_STATUS_ORDER]
+    if not valid:
+        return "needs_review"
+    return max(valid, key=lambda s: REVIEW_STATUS_ORDER[s])
+
+
 def _normalize_measurement(name: str, raw: Any) -> Tuple[Dict[str, Any], List[str]]:
     warnings: List[str] = []
     if raw is None:
@@ -116,23 +136,21 @@ def validate_extraction(payload: Mapping[str, Any]) -> Dict[str, Any]:
             warnings.append(
                 "low-confidence metrics require targeted review: " + ", ".join(low_confidence)
             )
-            status = "needs_review"
-        elif warnings and status == "verified":
-            status = "verified_with_warning"
+            status = merge_review_status(status, "needs_review")
+        if warnings:
+            status = merge_review_status(status, "verified_with_warning")
         asset["review_status"] = status
         asset["warnings"] = warnings
         normalized_assets.append(asset)
         all_warnings.extend(f"{asset_id}: {warning}" for warning in warnings)
 
+    overall_status = merge_review_status(*(a["review_status"] for a in normalized_assets))
+    if all_warnings:
+        overall_status = merge_review_status(overall_status, "verified_with_warning")
+
     return {
         "assets": normalized_assets,
-        "review_status": (
-            "needs_review"
-            if any(asset["review_status"] == "needs_review" for asset in normalized_assets)
-            else "verified_with_warning"
-            if all_warnings
-            else "verified"
-        ),
+        "review_status": overall_status,
         "warnings": all_warnings,
     }
 

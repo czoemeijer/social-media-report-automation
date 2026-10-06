@@ -21,7 +21,11 @@ def difference_hash(content: bytes) -> Optional[str]:
     try:
         with Image.open(io.BytesIO(content)) as image:
             gray = ImageOps.grayscale(image).resize((9, 8))
-            pixels = list(gray.getdata())
+            pixels = list(
+                gray.get_flattened_data()
+                if hasattr(gray, "get_flattened_data")
+                else gray.getdata()
+            )
     except Exception:
         return None
     bits = 0

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from pathlib import PurePosixPath
 from typing import Any
 
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin.file.file import File
+from tools._common import add_core_to_path
+
+add_core_to_path()
+
+from social_report.intake import match_asset_files  # noqa: E402
 
 
 class SelectAssetFilesTool(Tool):
@@ -20,18 +24,19 @@ class SelectAssetFilesTool(Tool):
         source_files = asset.get("source_files")
         if not isinstance(source_files, list) or not source_files:
             raise ValueError("asset.source_files must be a non-empty list")
-        requested = {str(name).replace("\\", "/") for name in source_files}
-        requested_basenames = {PurePosixPath(name).name for name in requested}
-        matches = []
-        for file in files:
-            filename = (file.filename or "").replace("\\", "/")
-            if filename in requested or PurePosixPath(filename).name in requested_basenames:
-                matches.append(file)
-        if not matches:
+
+        matched_files = match_asset_files(
+            files,
+            source_files,
+            get_filename=lambda f: f.filename or "",
+        )
+
+        if not matched_files:
             asset_id = asset.get("asset_group_id", "unknown")
             raise ValueError(f"no uploaded files matched reconstructed asset {asset_id!r}")
-        yield self.create_variable_message("selected_count", len(matches))
-        for file in matches:
+
+        yield self.create_variable_message("selected_count", len(matched_files))
+        for file in matched_files:
             yield self.create_blob_message(
                 file.blob,
                 meta={
