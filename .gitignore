@@ -12,6 +12,7 @@ tmp/
 *.md.backup
 REPORT_*.md
 **/REPORT_*.md
+!deploy/dify/prompts/report_writer.md
 *_audit_report.md
 *.xlsx
 *.XLSX

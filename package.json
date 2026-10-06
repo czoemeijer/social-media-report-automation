@@ -1,10 +1,10 @@
 {
   "name": "social-media-report-automation",
-  "version": "1.2.0",
-  "description": "Agent Skills and deterministic calculation engines for social media campaign auditing, Story series extraction, and structured reporting.",
+  "version": "2.0.0",
+  "description": "Dify-native multimodal campaign reconstruction with a shared deterministic reporting core and portable Agent Skills.",
   "main": "skills/social-report-audit/scripts/calculate_metrics.py",
   "scripts": {
-    "test": "python3 -m unittest discover tests -v"
+    "test": "PYTHONPATH=src python3 -m unittest discover tests -v"
   },
   "keywords": [
     "agent-skills",

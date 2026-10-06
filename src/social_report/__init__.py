@@ -12,4 +12,4 @@ __all__ = [
     "validate_extraction",
 ]
 
-__version__ = "0.2.0"
+__version__ = "2.0.0"

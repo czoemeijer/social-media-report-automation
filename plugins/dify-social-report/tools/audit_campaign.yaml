@@ -9,13 +9,13 @@ description:
   llm: Never recomputes with an LLM. Returns isolated scope buckets, warnings, and review status.
 parameters:
   - name: campaign_json
-    type: string
+    type: object
     required: true
     label:
       en_US: Validated campaign JSON
     human_description:
       en_US: Validated canonical extraction output for all grouped campaign assets.
-    llm_description: JSON object containing the validated assets array.
+    llm_description: Object containing the validated assets array.
     form: llm
 extra:
   python:

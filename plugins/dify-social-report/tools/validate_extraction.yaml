@@ -9,13 +9,13 @@ description:
   llm: Enforces numeric, precision, confidence, scope, null, and review-status semantics.
 parameters:
   - name: extraction_json
-    type: string
+    type: object
     required: true
     label:
       en_US: Extraction JSON
     human_description:
       en_US: Structured JSON from the per-asset vision extraction step.
-    llm_description: JSON object matching the extracted_asset schema.
+    llm_description: Object matching the extracted_asset schema or containing an assets array.
     form: llm
 extra:
   python:

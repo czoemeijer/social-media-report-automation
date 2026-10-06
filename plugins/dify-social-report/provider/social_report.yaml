@@ -9,6 +9,7 @@ identity:
 tools:
   - tools/prepare_campaign_input.yaml
   - tools/unpack_campaign_archive.yaml
+  - tools/select_asset_files.yaml
   - tools/validate_extraction.yaml
   - tools/audit_campaign.yaml
   - tools/export_campaign.yaml

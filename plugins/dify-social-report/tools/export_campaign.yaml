@@ -9,7 +9,7 @@ description:
   llm: Produces a file without calling a model or recomputing campaign metrics.
 parameters:
   - name: audit_json
-    type: string
+    type: object
     required: true
     label:
       en_US: Audit JSON

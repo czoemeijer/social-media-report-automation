@@ -17,4 +17,5 @@ class ValidateExtractionTool(Tool):
         payload = object_from_json(tool_parameters.get("extraction_json"), "extraction_json")
         result = validate_extraction(payload)
         yield self.create_json_message(result)
+        yield self.create_variable_message("validated", result)
         yield self.create_variable_message("validated_json", compact_json(result))

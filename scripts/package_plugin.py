@@ -21,6 +21,7 @@ def main() -> None:
         type=Path,
         default=ROOT / "dist" / "dify-social-report-0.1.0.difypkg",
     )
+    parser.add_argument("--cli", default="dify", help="Path to the official Dify CLI binary.")
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -30,7 +31,7 @@ def main() -> None:
         shutil.copytree(CORE_SOURCE, staged / "social_report")
         subprocess.run(
             [
-                "dify",
+                args.cli,
                 "plugin",
                 "package",
                 str(staged),

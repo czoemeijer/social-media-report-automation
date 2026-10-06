@@ -34,6 +34,7 @@ class PrepareCampaignInputTool(Tool):
         manifest = [file.manifest_entry() for file in prepared]
         result = {"files": [file.source_id for file in prepared], "manifest": manifest}
         yield self.create_json_message(result)
+        yield self.create_variable_message("manifest", result)
         yield self.create_variable_message("manifest_json", compact_json(result))
         for file in prepared:
             yield self.create_blob_message(

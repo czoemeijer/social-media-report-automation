@@ -17,4 +17,5 @@ class AuditCampaignTool(Tool):
         payload = object_from_json(tool_parameters.get("campaign_json"), "campaign_json")
         result = audit_campaign(payload)
         yield self.create_json_message(result)
+        yield self.create_variable_message("audit", result)
         yield self.create_variable_message("audit_json", compact_json(result))

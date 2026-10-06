@@ -10,6 +10,7 @@ normalizes structured vision output, performs scope-aware calculations, and expo
 
 - `prepare_campaign_input`: MIME validation, limits, SHA-256, perceptual hash, and manifest.
 - `unpack_campaign_archive`: bounded ZIP reading with traversal, symlink, nested archive, and bomb protection.
+- `select_asset_files`: sends only one reconstructed asset's screenshots to detailed extraction.
 - `validate_extraction`: canonical measurement and confidence validation.
 - `audit_campaign`: deterministic metrics, Story-safe semantics, scope buckets, and warnings.
 - `export_campaign`: JSON, CSV, or deterministic Markdown file output.
