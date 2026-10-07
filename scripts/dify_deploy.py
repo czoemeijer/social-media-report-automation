@@ -37,7 +37,7 @@ import yaml  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DSL = ROOT / "deploy" / "dify" / "social-media-report.yml"
-DEFAULT_PLUGIN_PKG = ROOT / "dist" / "dify-social-report-0.1.0.difypkg"
+DEFAULT_PLUGIN_PKG = ROOT / "dist" / "dify-social-report-0.1.1.difypkg"
 DEFAULT_ENV_FILE = ROOT / ".env.local"
 USER_ENV_FILE = Path.home() / ".config" / "social-report" / "dify.env"
 PROVIDER_YAML = ROOT / "plugins" / "dify-social-report" / "provider" / "social_report.yaml"
@@ -73,6 +73,14 @@ class DifySettings:
     csrf_token: str = ""
     model_provider: str = ""
     model_name: str = ""
+
+
+@dataclass(frozen=True)
+class HttpResult:
+    status: int
+    body: Any
+    headers: Mapping[str, str]
+    body_sha256: str
 
 
 def _strip_unquoted_comment(value: str) -> str:
@@ -188,6 +196,22 @@ def _redact(value: Any, secrets: Iterable[str]) -> Any:
     return value
 
 
+def _error_detail(body: Any, secrets: Iterable[str]) -> str:
+    """Return a short, redacted server error without dumping response data."""
+
+    safe = _redact(body, secrets)
+    if isinstance(safe, dict):
+        code = safe.get("code")
+        message = safe.get("message") or safe.get("error")
+        parts = [str(part) for part in (code, message) if part]
+        detail = ": ".join(parts)
+    elif isinstance(safe, str):
+        detail = safe.strip()
+    else:
+        detail = ""
+    return detail[:500]
+
+
 class DifyClient:
     """Small HTTP client with intentionally separate OpenAPI and Console auth."""
 
@@ -197,6 +221,7 @@ class DifyClient:
         self.settings = settings
         self.base_url = settings.base_url
         self.timeout = timeout
+        self.catalog_fingerprint = ""
 
     @property
     def secrets(self) -> Tuple[str, ...]:
@@ -241,10 +266,50 @@ class DifyClient:
         headers: Optional[Mapping[str, str]] = None,
         raw_payload: Optional[bytes] = None,
     ) -> Tuple[int, Any]:
+        if auth == "openapi" and not self.catalog_fingerprint:
+            self.refresh_catalog()
+        result = self._request_once(
+            method,
+            path,
+            auth=auth,
+            payload=payload,
+            headers=headers,
+            raw_payload=raw_payload,
+        )
+        if (
+            auth == "openapi"
+            and method.upper() in {"GET", "HEAD"}
+            and result.status == 412
+            and isinstance(result.body, dict)
+            and result.body.get("code") == "catalog_stale"
+        ):
+            self.refresh_catalog()
+            result = self._request_once(
+                method,
+                path,
+                auth=auth,
+                payload=payload,
+                headers=headers,
+                raw_payload=raw_payload,
+            )
+        return result.status, result.body
+
+    def _request_once(
+        self,
+        method: str,
+        path: str,
+        *,
+        auth: str,
+        payload: Optional[Any] = None,
+        headers: Optional[Mapping[str, str]] = None,
+        raw_payload: Optional[bytes] = None,
+    ) -> HttpResult:
         request_headers = {
             "User-Agent": "social-report-automation/2.0 dify-contract-client",
             **self._auth_headers(auth),
         }
+        if auth == "openapi":
+            request_headers["X-Dify-Catalog"] = self.catalog_fingerprint
         if headers:
             request_headers.update(headers)
         data: Optional[bytes] = raw_payload
@@ -256,23 +321,64 @@ class DifyClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                raw_body = response.read().decode("utf-8")
+                raw_bytes = response.read()
+                raw_body = raw_bytes.decode("utf-8")
                 try:
                     body: Any = json.loads(raw_body)
                 except json.JSONDecodeError:
                     body = raw_body
-                return response.status, body
+                response_headers = {
+                    str(key).lower(): str(value) for key, value in response.headers.items()
+                }
+                self._capture_catalog_fingerprint(response_headers)
+                return HttpResult(
+                    status=response.status,
+                    body=body,
+                    headers=response_headers,
+                    body_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+                )
         except urllib.error.HTTPError as exc:
-            raw_body = exc.read().decode("utf-8", errors="replace")
+            raw_bytes = exc.read()
+            raw_body = raw_bytes.decode("utf-8", errors="replace")
             try:
                 body = json.loads(raw_body)
             except json.JSONDecodeError:
                 body = raw_body
-            return exc.code, _redact(body, self.secrets)
+            response_headers = (
+                {str(key).lower(): str(value) for key, value in exc.headers.items()}
+                if exc.headers
+                else {}
+            )
+            self._capture_catalog_fingerprint(response_headers)
+            return HttpResult(
+                status=exc.code,
+                body=_redact(body, self.secrets),
+                headers=response_headers,
+                body_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+            )
         except urllib.error.URLError as exc:
             raise DeploymentError(
                 f"Failed to connect to Dify at {self.base_url}: {exc.reason}"
             ) from exc
+
+    def _capture_catalog_fingerprint(self, headers: Mapping[str, str]) -> None:
+        fingerprint = headers.get("x-dify-catalog", "").strip().lower()
+        if not fingerprint:
+            return
+        if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+            raise DeploymentError("Dify returned a malformed OpenAPI catalog fingerprint")
+        self.catalog_fingerprint = fingerprint
+
+    def refresh_catalog(self) -> None:
+        result = self._request_once("GET", "/openapi/v1/_catalog", auth="none")
+        fingerprint = result.headers.get("x-dify-catalog", "").strip().lower()
+        if result.status != 200:
+            raise DeploymentError(f"OpenAPI catalog discovery failed with HTTP {result.status}")
+        if not fingerprint:
+            raise DeploymentError("OpenAPI catalog response is missing its catalog fingerprint")
+        if fingerprint != result.body_sha256:
+            raise DeploymentError("OpenAPI catalog fingerprint does not match the catalog body")
+        self.catalog_fingerprint = fingerprint
 
     def get(self, path: str, *, auth: str) -> Tuple[int, Any]:
         return self.request("GET", path, auth=auth)
@@ -386,6 +492,15 @@ def discover_server(client: DifyClient) -> Dict[str, Any]:
     report["capabilities"]["released_contract"] = (
         "VERIFIED" if version in SUPPORTED_CONTRACTS else "UNSUPPORTED_VERSION"
     )
+    if version == "1.17.1":
+        try:
+            client.refresh_catalog()
+        except DeploymentError:
+            report["capabilities"]["openapi_catalog"] = "ERROR"
+        else:
+            report["capabilities"]["openapi_catalog"] = "VERIFIED"
+    else:
+        report["capabilities"]["openapi_catalog"] = "UNSUPPORTED_VERSION"
     if version == "1.17.1" and client.settings.openapi_token:
         openapi_status, _ = client.get("/openapi/v1/workspaces", auth="openapi")
         report["capabilities"]["openapi_account"] = _http_capability_state(openapi_status)
@@ -450,13 +565,59 @@ def expected_plugin_identifier(dsl_path: Path = DEFAULT_DSL) -> str:
     raise DeploymentError(f"Plugin dependency identifier is missing in {dsl_path}")
 
 
-def verify_plugin(client: DifyClient) -> Dict[str, Any]:
+def _plugin_identity(identifier: str) -> Tuple[str, str, str]:
+    match = re.fullmatch(r"([^:]+):(\d+\.\d+\.\d+)@([0-9a-f]{64})", identifier)
+    if not match:
+        raise DeploymentError(f"Malformed plugin unique identifier: {identifier!r}")
+    return match.group(1), match.group(2), match.group(3)
+
+
+def _validate_deployment_plugin_identifier(identifier: str) -> None:
+    repository_id, repository_version, _ = _plugin_identity(expected_plugin_identifier())
+    deployment_id, deployment_version, _ = _plugin_identity(identifier)
+    if (deployment_id, deployment_version) != (repository_id, repository_version):
+        raise DeploymentError(
+            "Deployment plugin identifier must preserve the repository plugin id and version"
+        )
+
+
+def bind_plugin_dependency(yaml_content: str, identifier: str) -> str:
+    """Bind a deployment-only signed-package checksum without changing the repository DSL."""
+
+    _validate_deployment_plugin_identifier(identifier)
+    data = yaml.safe_load(yaml_content)
+    dependencies = data.get("dependencies", []) if isinstance(data, dict) else []
+    bound = 0
+    for dependency in dependencies:
+        if not isinstance(dependency, dict) or dependency.get("type") != "package":
+            continue
+        value = dependency.get("value")
+        if not isinstance(value, dict) or "plugin_unique_identifier" not in value:
+            continue
+        current = value.get("plugin_unique_identifier")
+        if not isinstance(current, str):
+            continue
+        current_id, current_version, _ = _plugin_identity(current)
+        target_id, target_version, _ = _plugin_identity(identifier)
+        if (current_id, current_version) == (target_id, target_version):
+            value["plugin_unique_identifier"] = identifier
+            bound += 1
+    if bound != 1:
+        raise DeploymentError(f"Expected one compatible package dependency, found {bound}")
+    rendered = str(yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=120))
+    yaml.safe_load(rendered)
+    return rendered
+
+
+def verify_plugin(
+    client: DifyClient, expected_identifier: Optional[str] = None
+) -> Dict[str, Any]:
     """Verify exact installation identity plus provider and tool visibility."""
 
-    expected_identifier = expected_plugin_identifier()
+    expected_identifier = expected_identifier or expected_plugin_identifier()
+    _validate_deployment_plugin_identifier(expected_identifier)
     expected_tools = expected_tool_names()
-    plugin_id, version_checksum = expected_identifier.split(":", 1)
-    expected_version, expected_checksum = version_checksum.split("@", 1)
+    plugin_id, expected_version, expected_checksum = _plugin_identity(expected_identifier)
     status, body = client.get(
         "/console/api/workspaces/current/plugin/list?page=1&page_size=256", auth="console"
     )
@@ -530,10 +691,18 @@ def verify_plugin(client: DifyClient) -> Dict[str, Any]:
             "provider_loaded": False,
             "tools_state": "MISSING_PROVIDER",
         }
+    provider_name = provider.get("name") or provider.get("id")
     tools = provider.get("tools")
+    if (not isinstance(tools, list) or not tools) and isinstance(provider_name, str):
+        tool_path = (
+            "/console/api/workspaces/current/tool-provider/builtin/"
+            f"{urllib.parse.quote(provider_name, safe='/')}/tools"
+        )
+        tools_status, tools_body = client.get(tool_path, auth="console")
+        tools = tools_body if tools_status == 200 and isinstance(tools_body, list) else None
     if not isinstance(tools, list) or not tools:
         tools_state = "NOT_VERIFIED"
-        actual_tools: List[str] = []
+        actual_tools = []
     else:
         actual_tools = sorted(
             {
@@ -597,7 +766,11 @@ def poll_plugin_task(
 
 
 def install_plugin(
-    client: DifyClient, package_path: Path, *, timeout: float = 120.0
+    client: DifyClient,
+    package_path: Path,
+    *,
+    timeout: float = 120.0,
+    replace_installed: bool = False,
 ) -> Dict[str, Any]:
     if not package_path.is_file():
         raise DeploymentError(f"Plugin package not found: {package_path}")
@@ -609,16 +782,50 @@ def install_plugin(
         auth="console",
     )
     if upload_status != 200 or not isinstance(upload, dict):
-        raise DeploymentError(f"Plugin upload failed with HTTP {upload_status}")
+        detail = _error_detail(upload, client.secrets)
+        suffix = f": {detail}" if detail else ""
+        raise DeploymentError(f"Plugin upload failed with HTTP {upload_status}{suffix}")
     unique_identifier = upload.get("unique_identifier")
     if not isinstance(unique_identifier, str) or not unique_identifier:
         raise DeploymentError("Plugin upload response is missing unique_identifier")
-    expected_identifier = expected_plugin_identifier()
-    if unique_identifier != expected_identifier:
-        raise DeploymentError(
-            "Uploaded package identifier does not match the workflow dependency; "
-            "rebuild the package and DSL"
+    repository_identifier = expected_plugin_identifier()
+    _validate_deployment_plugin_identifier(unique_identifier)
+    replaced_identifier: Optional[str] = None
+    if replace_installed:
+        plugin_id, _, _ = _plugin_identity(unique_identifier)
+        list_status, list_body = client.get(
+            "/console/api/workspaces/current/plugin/list?page=1&page_size=256",
+            auth="console",
         )
+        plugins = list_body.get("plugins") if isinstance(list_body, dict) else None
+        if list_status != 200 or not isinstance(plugins, list):
+            raise DeploymentError(f"Plugin replacement preflight failed with HTTP {list_status}")
+        existing = next(
+            (
+                item
+                for item in plugins
+                if isinstance(item, dict) and item.get("plugin_id") == plugin_id
+            ),
+            None,
+        )
+        if existing and existing.get("plugin_unique_identifier") != unique_identifier:
+            installation_id = existing.get("installation_id")
+            if not isinstance(installation_id, str) or not installation_id:
+                raise DeploymentError("Installed plugin is missing installation_id")
+            uninstall_status, uninstall = client.post(
+                "/console/api/workspaces/current/plugin/uninstall",
+                {"plugin_installation_id": installation_id, "preserve_credentials": True},
+                auth="console",
+            )
+            if (
+                uninstall_status != 200
+                or not isinstance(uninstall, dict)
+                or uninstall.get("success") is not True
+            ):
+                raise DeploymentError(
+                    f"Plugin replacement uninstall failed with HTTP {uninstall_status}"
+                )
+            replaced_identifier = str(existing.get("plugin_unique_identifier") or "")
     install_status, install = client.post(
         "/console/api/workspaces/current/plugin/install/pkg",
         {"plugin_unique_identifiers": [unique_identifier]},
@@ -632,13 +839,16 @@ def install_plugin(
         if not isinstance(task_id, str) or not task_id:
             raise DeploymentError("Plugin install response is missing task_id")
         poll_plugin_task(client, task_id, timeout=timeout)
-    verification = verify_plugin(client)
+    verification = verify_plugin(client, unique_identifier)
     if verification["status"] != "PASS":
         raise DeploymentError(
             f"Plugin installation finished but verification was {verification['status']}"
         )
     return {
         "unique_identifier": unique_identifier,
+        "repository_identifier": repository_identifier,
+        "deployment_checksum_differs": unique_identifier != repository_identifier,
+        "replaced_identifier": replaced_identifier,
         "package_sha256": hashlib.sha256(package_path.read_bytes()).hexdigest(),
         "task_id": task_id,
         "verification": verification,
@@ -796,11 +1006,14 @@ def import_workflow(
     app_id: Optional[str] = None,
     model_provider: str = "",
     model_name: str = "",
+    plugin_identifier: str = "",
 ) -> Dict[str, Any]:
     if not dsl_path.is_file():
         raise DeploymentError(f"DSL file not found: {dsl_path}")
     version, _ = require_supported_contract(client)
     yaml_content = dsl_path.read_text(encoding="utf-8")
+    if plugin_identifier:
+        yaml_content = bind_plugin_dependency(yaml_content, plugin_identifier)
     if bool(model_provider) != bool(model_name):
         raise DeploymentError("Model binding requires both --model-provider and --model-name")
     if model_provider and model_name:
@@ -838,6 +1051,7 @@ def import_workflow(
         "import_status": result.get("status"),
         "warnings": result.get("warnings", []),
         "dependencies": "VERIFIED",
+        "plugin_identifier": plugin_identifier or expected_plugin_identifier(),
         "model_binding": (
             {"provider": model_provider, "name": model_name}
             if model_provider and model_name
@@ -905,7 +1119,10 @@ def parse_sse_workflow_result(body: Any) -> Dict[str, Any]:
 
 def assert_workflow_outputs(run_data: Mapping[str, Any]) -> Dict[str, Any]:
     if run_data.get("status") != "succeeded":
-        raise DeploymentError(f"Workflow status was {run_data.get('status')!r}, not 'succeeded'")
+        error = str(run_data.get("error") or "no server error").strip()[:1000]
+        raise DeploymentError(
+            f"Workflow status was {run_data.get('status')!r}, not 'succeeded': {error}"
+        )
     outputs = run_data.get("outputs")
     if not isinstance(outputs, dict):
         raise DeploymentError("Workflow outputs are missing")
@@ -1079,8 +1296,8 @@ def cmd_discover(client: DifyClient) -> int:
     return 0 if report.get("version_state") == "VERIFIED" else 1
 
 
-def cmd_plugin_status(client: DifyClient) -> int:
-    result = verify_plugin(client)
+def cmd_plugin_status(client: DifyClient, plugin_identifier: str = "") -> int:
+    result = verify_plugin(client, plugin_identifier or None)
     print(json.dumps(result, indent=2))
     return 0 if result["status"] == "PASS" else 1
 
@@ -1099,15 +1316,24 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--csrf-token", default=None, help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("discover", help="Discover exact Dify version and capability states")
-    commands.add_parser("plugin-status", help="Verify plugin identity, provider, and six tools")
+    plugin_status = commands.add_parser(
+        "plugin-status", help="Verify plugin identity, provider, and six tools"
+    )
+    plugin_status.add_argument("--plugin-identifier", default="")
     install = commands.add_parser("install-plugin", help="Upload and install the local plugin")
     install.add_argument("package", nargs="?", type=Path, default=DEFAULT_PLUGIN_PKG)
     install.add_argument("--timeout", type=float, default=120.0)
+    install.add_argument(
+        "--replace-installed",
+        action="store_true",
+        help="Replace another installed build of the same plugin id",
+    )
     import_parser = commands.add_parser("import-workflow", help="Create or update workflow draft")
     import_parser.add_argument("dsl", nargs="?", type=Path, default=DEFAULT_DSL)
     import_parser.add_argument("--app-id", default=None)
     import_parser.add_argument("--model-provider", default=None)
     import_parser.add_argument("--model-name", default=None)
+    import_parser.add_argument("--plugin-identifier", default="")
     smoke = commands.add_parser("smoke-test", help="Run a draft or published synthetic E2E")
     smoke.add_argument("app_id")
     smoke.add_argument("--file", action="append", type=Path, default=[])
@@ -1129,6 +1355,7 @@ def _build_parser() -> argparse.ArgumentParser:
     live.add_argument("--synthetic", choices=("direct", "zip"), default="zip")
     live.add_argument("--mode", choices=("draft", "published"), default="draft")
     live.add_argument("--confirm-live", action="store_true")
+    live.add_argument("--plugin-identifier", default="")
     return parser
 
 
@@ -1149,9 +1376,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.command == "discover":
             return cmd_discover(client)
         if args.command == "plugin-status":
-            return cmd_plugin_status(client)
+            return cmd_plugin_status(client, args.plugin_identifier)
         if args.command == "install-plugin":
-            _print_result(install_plugin(client, args.package, timeout=args.timeout))
+            _print_result(
+                install_plugin(
+                    client,
+                    args.package,
+                    timeout=args.timeout,
+                    replace_installed=args.replace_installed,
+                )
+            )
             return 0
         if args.command == "import-workflow":
             _print_result(
@@ -1161,6 +1395,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     app_id=args.app_id,
                     model_provider=args.model_provider or settings.model_provider,
                     model_name=args.model_name or settings.model_name,
+                    plugin_identifier=args.plugin_identifier,
                 )
             )
             return 0
@@ -1188,7 +1423,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "Live verification is opt-in; set DIFY_LIVE_TEST=1 or pass --confirm-live"
                 )
             version, discovery = require_supported_contract(client)
-            plugin = verify_plugin(client)
+            plugin = verify_plugin(client, args.plugin_identifier or None)
             if plugin["status"] != "PASS":
                 raise DeploymentError(f"Plugin verification was {plugin['status']}")
             check_dependencies(client, version, args.app_id)
