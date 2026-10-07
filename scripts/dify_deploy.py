@@ -1321,7 +1321,8 @@ def verify_deterministic_parity(
     for field in summary_fields:
         if local_summary.get(field) != live_summary.get(field):
             diffs.append(
-                f"campaign_summary.{field}: local={local_summary.get(field)!r} != live={live_summary.get(field)!r}"
+                f"campaign_summary.{field}: "
+                f"local={local_summary.get(field)!r} != live={live_summary.get(field)!r}"
             )
         else:
             verified_fields.append(f"campaign_summary.{field}")
@@ -1346,7 +1347,8 @@ def verify_deterministic_parity(
         ):
             if loc_b.get(field) != liv_b.get(field):
                 diffs.append(
-                    f"scope_buckets[{bucket_name}].{field}: local={loc_b.get(field)!r} != live={liv_b.get(field)!r}"
+                    f"scope_buckets[{bucket_name}].{field}: "
+                    f"local={loc_b.get(field)!r} != live={liv_b.get(field)!r}"
                 )
             else:
                 verified_fields.append(f"scope_buckets[{bucket_name}].{field}")
@@ -1359,7 +1361,8 @@ def verify_deterministic_parity(
     }
     if set(local_assets.keys()) != set(live_assets.keys()):
         diffs.append(
-            f"asset_group_ids mismatch: local={sorted(local_assets.keys())} != live={sorted(live_assets.keys())}"
+            f"asset_group_ids mismatch: "
+            f"local={sorted(local_assets.keys())} != live={sorted(live_assets.keys())}"
         )
     else:
         for aid, loc_a in local_assets.items():
@@ -1376,7 +1379,8 @@ def verify_deterministic_parity(
             ):
                 if loc_a.get(field) != liv_a.get(field):
                     diffs.append(
-                        f"asset[{aid}].{field}: local={loc_a.get(field)!r} != live={liv_a.get(field)!r}"
+                        f"asset[{aid}].{field}: "
+                        f"local={loc_a.get(field)!r} != live={liv_a.get(field)!r}"
                     )
                 else:
                     verified_fields.append(f"asset[{aid}].{field}")
@@ -1620,7 +1624,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.command == "verify-parity":
             if not args.confirm_live and os.environ.get("DIFY_LIVE_TEST") != "1":
                 raise DeploymentError(
-                    "Live parity verification is opt-in; set DIFY_LIVE_TEST=1 or pass --confirm-live"
+                    "Live parity verification is opt-in; "
+                    "set DIFY_LIVE_TEST=1 or pass --confirm-live"
                 )
             _print_result(verify_deterministic_parity(client, args.app_id, args.run_id))
             return 0
