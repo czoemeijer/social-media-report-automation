@@ -48,14 +48,15 @@ uv run python scripts/dify_deploy.py discover
 
 Discovery uses the unauthenticated `GET /openapi/v1/_version` and `_health` routes on `1.17.1`, or
 the released Console version route on `1.14.2`. Authenticated capabilities are reported separately
-as `VERIFIED`, `UNAVAILABLE`, `UNAUTHORIZED`, `UNSUPPORTED_VERSION`, or `ERROR`. When Console auth
-is configured, discovery lists only configured LLM models that advertise vision/multimodal support;
-it does not read or modify provider secret values.
+as `VERIFIED`, `UNAVAILABLE`, `UNAUTHORIZED`, `UNSUPPORTED_VERSION`, or `ERROR`. On Dify `1.17.1`,
+OpenAPI calls automatically discover and attach the required `X-Dify-Catalog` header via
+`/openapi/v1/_catalog`. When Console auth is configured, discovery lists only configured LLM models
+that advertise vision/multimodal support; it does not read or modify provider secret values.
 
 ## Install and verify the plugin
 
 ```bash
-uv run python scripts/dify_deploy.py install-plugin
+uv run python scripts/dify_deploy.py install-plugin --replace-installed
 uv run python scripts/dify_deploy.py plugin-status
 ```
 
@@ -64,7 +65,12 @@ The helper uses the released Console contracts:
 - `POST /console/api/workspaces/current/plugin/upload/pkg`, multipart field `pkg`;
 - `POST /console/api/workspaces/current/plugin/install/pkg` with `plugin_unique_identifiers`;
 - bounded polling of `/plugin/tasks/{task_id}` using its wrapped `task` object;
-- `/plugin/list` plus `/tool-providers` verification.
+- `/plugin/list` plus authoritative provider detail route
+  `/console/api/workspaces/current/tool-provider/builtin/<provider>/tools` for tool declarations.
+
+When signature verification is enforced by the live Dify plugin daemon, install packages signed
+against the trusted daemon public key. Use `--replace-installed` to safely update an existing build
+of the project plugin while preserving credentials.
 
 `PASS` requires the exact unique identifier, version, checksum, loaded provider, and the six tool
 names derived from `provider/social_report.yaml`. An empty tool response is `PARTIAL`, never a pass.
@@ -148,6 +154,13 @@ SINGLE_CHUNK_ATTACHMENT_LIMIT=30
 Restart the relevant Dify services after deployment configuration changes. The plugin separately
 enforces 100 files maximum, 25 MiB per file, 100 MiB total ZIP uncompressed size, nested archive
 rejection, and a 100:1 per-entry compression-ratio ceiling.
+
+### Operational note: Internal nginx DNS resolver
+
+In containerized deployments, Dify's internal nginx proxy may cache upstream container IP addresses.
+If service containers (such as the plugin daemon) restart with newly assigned internal IPs, nginx
+may return `502 Bad Gateway` until its resolver TTL expires or the nginx container is reloaded
+(`docker exec docker-nginx-1 nginx -s reload`).
 
 Only record `LIVE_DIFY_VERIFIED` after plugin installation, dependency checking, model binding, and
 the required synthetic draft scenarios have actually completed on the named Dify/model combination.

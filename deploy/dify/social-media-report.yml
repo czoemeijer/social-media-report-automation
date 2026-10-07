@@ -535,7 +535,8 @@ workflow:
               text: >-
                 Extract exactly one reconstructed asset. Exact numbers stay exact; abbreviations are
                 approximate with evidence_text; missing and unreadable values are null; visible zero
-                is exact zero. Preserve source provenance and never calculate rates or totals.
+                is exact zero. Preserve source provenance and never calculate rates or totals. Always
+                copy source_files exactly from the Asset context.
             - role: user
               text: |-
                 Asset context: {{#extract_iteration.item#}}
@@ -544,7 +545,7 @@ workflow:
           structured_output:
             schema:
               type: object
-              required: [asset_group_id, platform, content_format, scope, metrics, review_status]
+              required: [asset_group_id, platform, content_format, scope, source_files, metrics, review_status]
               properties:
                 asset_group_id: {type: string}
                 creator: {type: [string, 'null']}
@@ -552,7 +553,7 @@ workflow:
                 content_format: {type: string, enum: [post, reel, story, ad, unknown]}
                 scope: {type: string, enum: [organic, paid, mixed_or_unknown, unknown]}
                 has_ad_disclaimer: {type: boolean}
-                source_files: {type: array, items: {type: string}}
+                source_files: {type: array, minItems: 1, items: {type: string}}
                 metrics:
                   type: object
                   additionalProperties:
@@ -667,10 +668,20 @@ workflow:
           code: |-
             def main(campaign: dict) -> dict:
                 assets = campaign.get("assets", []) if isinstance(campaign, dict) else []
-                review_assets = [
-                    a for a in assets
-                    if isinstance(a, dict) and a.get("review_status") in ("needs_review", "rejected")
-                ]
+                review_assets = []
+                for a in assets:
+                    if not isinstance(a, dict) or a.get("review_status") not in ("needs_review", "rejected"):
+                        continue
+                    item = dict(a)
+                    source_files = item.get("source_files")
+                    if not isinstance(source_files, list) or not source_files:
+                        metric_files = [
+                            m.get("source_file")
+                            for m in (item.get("metrics") or {}).values()
+                            if isinstance(m, dict) and m.get("source_file")
+                        ]
+                        item["source_files"] = [f for f in dict.fromkeys(metric_files) if f]
+                    review_assets.append(item)
                 return {"review_assets": review_assets}
           code_language: python3
           desc: Filter assets requiring review.

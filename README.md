@@ -117,12 +117,12 @@ asset/Story grouping, and deterministic numerical consistency. See [evals/README
 | Area | Status | Evidence |
 |---|---|---|
 | Deterministic core | VERIFIED | Unit/regression tests, Ruff, mypy, package build |
-| ZIP/folder intake | VERIFIED | Direct, invalid ZIP, traversal, nested archive, duplicate filename tests |
-| Dify plugin package | VERIFIED | Official CLI package build and packaged-module import smoke test |
-| Dify workflow structure | VERIFIED | YAML parse and graph/tool/model-boundary static validator |
-| Live Dify import/run | NOT_RUNTIME_VERIFIED | No compatible Dify instance was available in this environment |
-| Vision reconstruction/extraction | IMPLEMENTED_NOT_RUNTIME_VERIFIED | Prompts, schemas, grouping iteration, and second pass committed |
-| Provider evaluation results | NOT_IMPLEMENTED | Harness exists; no paid model run or benchmark result is published |
+| ZIP/folder intake | VERIFIED | Direct, genuine ZIP, traversal, nested archive, duplicate filename tests |
+| Dify plugin package | VERIFIED | Signed 0.1.1 package, official CLI build, and packaged-module import smoke test |
+| Dify workflow structure | VERIFIED | YAML parse, 24 nodes/24 edges validator, targeted second-pass review coverage |
+| Live Dify import/run | VERIFIED | Dify 1.17.1 Community; signed 0.1.1 package installed; 6/6 tools verified via provider detail route; draft workflow executed |
+| Vision reconstruction/extraction | VERIFIED | Live runs passed end-to-end for both direct images and ZIP campaign inputs with OpenRouter GPT-4o |
+| Provider evaluation results | DEMONSTRATED | Verified on live Dify with OpenRouter GPT-4o; Gemini 2.5 Flash rejected due to provider 402 exhaustion |
 
 ## Privacy and security
 
