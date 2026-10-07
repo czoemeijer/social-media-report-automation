@@ -220,6 +220,9 @@ def _prepare_one(source: InputFile, max_file_size: int) -> PreparedFile:
     detected = detect_mime(source.content, filename)
     if detected in SUPPORTED_IMAGE_MIMES:
         validate_image_decoder(source.content, detected)
+    is_zip = detected == "application/zip"
+    if is_zip and PurePosixPath(filename).suffix.lower() != ".zip":
+        raise ValueError(f"unsupported file type for {filename!r}: {detected}")
     declared = source.declared_mime_type
     if declared and declared not in {detected, "application/octet-stream"}:
         image_alias = declared in SUPPORTED_IMAGE_MIMES and detected in SUPPORTED_IMAGE_MIMES
@@ -228,7 +231,7 @@ def _prepare_one(source: InputFile, max_file_size: int) -> PreparedFile:
             raise ValueError(
                 f"{filename!r} declared MIME {declared!r} does not match detected {detected!r}"
             )
-    if detected not in SUPPORTED_IMAGE_MIMES:
+    if detected not in SUPPORTED_IMAGE_MIMES and not is_zip:
         raise ValueError(f"unsupported file type for {filename!r}: {detected}")
     sha = sha256_bytes(source.content)
     transport_name = make_transport_name(filename, source.relative_path, sha)

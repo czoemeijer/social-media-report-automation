@@ -71,6 +71,15 @@ class IntakeTest(unittest.TestCase):
         self.assertEqual(len(names), 2)
         self.assertNotEqual(names[0], names[1])
 
+    def test_prepare_accepts_genuine_zip_for_archive_stage(self):
+        content = make_zip([("campaign/screen.png", VALID_PNG)])
+        prepared = prepare_campaign_input(
+            [InputFile("zip-1", "campaign.zip", content, "application/zip")]
+        )
+        self.assertEqual(prepared[0].mime_type, "application/zip")
+        self.assertIsNone(prepared[0].perceptual_hash)
+        self.assertEqual(prepared[0].filename, "campaign.zip")
+
     def test_zip_slip_rejected(self):
         content = make_zip([("../escape.png", VALID_PNG)])
         with self.assertRaisesRegex(ValueError, "unsafe ZIP entry"):
