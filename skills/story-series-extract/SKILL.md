@@ -9,6 +9,9 @@ This skill extracts and structures performance metrics from Instagram or Faceboo
 
 It is designed for **fast, straightforward, deterministic extraction** directly from screenshot evidence without unnecessary calculations, statistical guesswork, or complex audit formulas.
 
+The CLI is a thin wrapper over `src/social_report/stories.py`. Do not duplicate Story formulas in
+the Skill. Missing metrics remain null, and temporally incompatible snapshots disable drop-off.
+
 ---
 
 ## 1. Activation Triggers
@@ -77,6 +80,8 @@ Extract values directly from native Instagram Story Insights cards:
   $$\text{Míra opuštění} = \frac{\text{Reach}_{\text{první storky}} - \text{Reach}_{\text{poslední storky}}}{\text{Reach}_{\text{první storky}}} \times 100$$
 - **Formát čísla:** V české typografii s desetinnou čárkou a symbolem `%` (např. `16,0 %` nebo `20,0 %`).
 - *Poznámka:* Pokud je k dispozici pouze údaj *Navigation -> Exited* (Opuštění), lze uvést také počet opuštění dle navigace.
+- Pokud je poslední Reach vyšší než první nebo jsou snapshoty časově nesrovnatelné,
+  `drop_off_rate` je `null` a výstup vyžaduje kontrolu. Záporný pokles se nikdy neořezává na nulu.
 
 ### 6. Výsledek ankety/kvízu (Poll / Quiz Result)
 - **Definice:** Procentuální nebo číselný výsledek z interaktivní nálepky ankety, kvízu nebo hlasování.

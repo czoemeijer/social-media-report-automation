@@ -1,11 +1,18 @@
+import importlib.util
 import os
 import sys
-import json
 import unittest
-import importlib.util
-import subprocess
 
-SCRIPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "story-series-extract", "scripts", "extract_story_series.py"))
+SCRIPT_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "skills",
+        "story-series-extract",
+        "scripts",
+        "extract_story_series.py",
+    )
+)
 
 spec = importlib.util.spec_from_file_location("extract_story_series", SCRIPT_PATH)
 mod = importlib.util.module_from_spec(spec)

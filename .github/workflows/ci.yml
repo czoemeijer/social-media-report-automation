@@ -1,29 +1,73 @@
 name: CI
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Test on Python ${{ matrix.python-version }} (${{ matrix.os }})
+  tests:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-
+        python-version: ['3.9', '3.12']
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run python -m unittest discover -s tests -v
 
-      - name: Run unit and regression tests
+  quality:
+    name: Lint, types, schemas, and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: uv run ruff check src tests scripts evals plugins skills
+      - run: uv run mypy
+      - run: uv run python scripts/render_schemas.py
+      - run: git diff --exit-code -- schemas
+      - run: uv run python scripts/validate_dify_dsl.py
+      - run: uv build
+
+  dify-plugin:
+    name: Dify plugin package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - run: uv sync --extra dev
+      - name: Install official Dify CLI 0.6.10
         run: |
-          python -m unittest discover tests -v
+          curl -fsSL https://github.com/langgenius/dify-plugin-daemon/releases/download/0.6.10/dify-plugin-linux-amd64 -o /tmp/dify-plugin
+          chmod +x /tmp/dify-plugin
+          /tmp/dify-plugin version
+      - run: uv run python scripts/package_plugin.py --cli /tmp/dify-plugin
+      - run: unzip -t dist/dify-social-report-0.1.1.difypkg
+      - name: Check DSL dependency checksum
+        run: |
+          package_checksum=$(/tmp/dify-plugin plugin checksum dist/dify-social-report-0.1.1.difypkg 2>&1 | sed -n 's/.*checksum=//p')
+          grep -q "@${package_checksum}" deploy/dify/social-media-report.yml
+      - name: Import packaged plugin modules
+        run: |
+          mkdir plugin-smoke
+          unzip -q dist/dify-social-report-0.1.1.difypkg -d plugin-smoke
+          cd plugin-smoke
+          uv run --with 'dify-plugin>=0.9.0,<0.10.0' --with 'Pillow>=10.3,<13' python -c "import importlib; [importlib.import_module(name) for name in ['main','provider.social_report','tools.prepare_campaign_input','tools.unpack_campaign_archive','tools.select_asset_files','tools.validate_extraction','tools.audit_campaign','tools.export_campaign']]"

@@ -12,6 +12,7 @@ tmp/
 *.md.backup
 REPORT_*.md
 **/REPORT_*.md
+!deploy/dify/prompts/report_writer.md
 *_audit_report.md
 *.xlsx
 *.XLSX
@@ -48,6 +49,7 @@ REPORT_*.md
 .env
 .env.*
 *.env
+!.env.example
 *.pem
 *.key
 .streamlit/secrets.toml
@@ -61,6 +63,12 @@ __pycache__/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+dist/
+build/
+*.egg-info/
+.venv/
+.codebase-memory/
+*.difypkg
 
 # Node & package manager
 node_modules/

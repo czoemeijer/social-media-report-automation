@@ -1,0 +1,134 @@
+{
+  "$id": "https://social-report.local/schemas/extracted_asset.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "asset_group_id": {
+      "type": "string"
+    },
+    "content_format": {
+      "enum": [
+        "post",
+        "reel",
+        "story",
+        "ad",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "creator": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "has_ad_disclaimer": {
+      "type": "boolean"
+    },
+    "metrics": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "evidence_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extraction_method": {
+            "enum": [
+              "vision",
+              "manual",
+              "ocr"
+            ],
+            "type": "string"
+          },
+          "precision": {
+            "enum": [
+              "exact",
+              "approximate",
+              "missing",
+              "unreadable"
+            ],
+            "type": "string"
+          },
+          "source_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "minimum": 0,
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "precision"
+        ],
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "platform": {
+      "enum": [
+        "instagram",
+        "facebook",
+        "meta",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "review_status": {
+      "enum": [
+        "verified",
+        "verified_with_warning",
+        "needs_review",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "organic",
+        "paid",
+        "mixed_or_unknown",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "source_files": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "asset_group_id",
+    "platform",
+    "content_format",
+    "scope",
+    "metrics",
+    "review_status"
+  ],
+  "title": "Vision-extracted social asset",
+  "type": "object"
+}

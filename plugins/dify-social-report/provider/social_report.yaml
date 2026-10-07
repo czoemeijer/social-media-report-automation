@@ -1,0 +1,18 @@
+identity:
+  author: czoemeijer
+  name: social_report
+  label:
+    en_US: Social Report
+  description:
+    en_US: Deterministic worker tools for auditable multimodal campaign reporting.
+  icon: icon.svg
+tools:
+  - tools/prepare_campaign_input.yaml
+  - tools/unpack_campaign_archive.yaml
+  - tools/select_asset_files.yaml
+  - tools/validate_extraction.yaml
+  - tools/audit_campaign.yaml
+  - tools/export_campaign.yaml
+extra:
+  python:
+    source: provider/social_report.py

@@ -1,0 +1,31 @@
+identity:
+  name: select_asset_files
+  author: czoemeijer
+  label:
+    en_US: Select asset files
+description:
+  human:
+    en_US: Select only the screenshots assigned to one reconstructed asset group.
+  llm: Deterministic filename/path selection used inside the extraction iteration.
+parameters:
+  - name: files
+    type: files
+    required: true
+    label:
+      en_US: Canonical image files
+    human_description:
+      en_US: Image output from Normalize campaign files.
+    llm_description: The complete canonical campaign image list.
+    form: llm
+  - name: asset
+    type: object
+    required: true
+    label:
+      en_US: Reconstructed asset
+    human_description:
+      en_US: One asset object from global campaign reconstruction.
+    llm_description: The current iteration item containing source_files.
+    form: llm
+extra:
+  python:
+    source: tools/select_asset_files.py

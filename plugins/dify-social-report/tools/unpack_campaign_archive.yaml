@@ -1,0 +1,22 @@
+identity:
+  name: unpack_campaign_archive
+  author: czoemeijer
+  label:
+    en_US: Unpack campaign ZIP
+description:
+  human:
+    en_US: Normalize direct images and safely unpack any ZIPs into one canonical image manifest.
+  llm: Passes images through and rejects traversal, symlinks, nested archives, encrypted entries, and archive bombs.
+parameters:
+  - name: files
+    type: files
+    required: true
+    label:
+      en_US: Prepared campaign files
+    human_description:
+      en_US: Prepared direct screenshots, ZIPs, or a mixture of both.
+    llm_description: The file output from Prepare campaign input.
+    form: llm
+extra:
+  python:
+    source: tools/unpack_campaign_archive.py

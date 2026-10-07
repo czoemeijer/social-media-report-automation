@@ -4,17 +4,25 @@ test_calculate_metrics.py
 Unit and integration tests for calculate_metrics.py script and end-to-end flow.
 """
 
-import sys
-import os
-import unittest
 import json
+import os
 import subprocess
+import sys
+import unittest
 
-SCRIPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "social-report-audit", "scripts", "calculate_metrics.py"))
+SCRIPT_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "skills",
+        "social-report-audit",
+        "scripts",
+        "calculate_metrics.py",
+    )
+)
 
 
 class TestScriptCLI(unittest.TestCase):
-
     def test_cli_single_item(self):
         input_data = {
             "creator": "Synthetic Creator",
@@ -25,14 +33,14 @@ class TestScriptCLI(unittest.TestCase):
             "comments": 18,
             "shares": 32,
             "saves": 80,
-            "scope": "organic"
+            "scope": "organic",
         }
         proc = subprocess.run(
             [sys.executable, SCRIPT_PATH],
             input=json.dumps(input_data),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         res = json.loads(proc.stdout)
         self.assertEqual(res["known_engagement_actions"], 550)
@@ -42,15 +50,29 @@ class TestScriptCLI(unittest.TestCase):
 
     def test_cli_campaign_batch(self):
         batch = [
-            {"creator": "Creator 1", "reach": 5000, "likes": 200, "comments": 10, "shares": 5, "saves": 35},
-            {"creator": "Creator 2", "reach": 8000, "likes": 350, "comments": 25, "shares": 15, "saves": 60}
+            {
+                "creator": "Creator 1",
+                "reach": 5000,
+                "likes": 200,
+                "comments": 10,
+                "shares": 5,
+                "saves": 35,
+            },
+            {
+                "creator": "Creator 2",
+                "reach": 8000,
+                "likes": 350,
+                "comments": 25,
+                "shares": 15,
+                "saves": 60,
+            },
         ]
         proc = subprocess.run(
             [sys.executable, SCRIPT_PATH],
             input=json.dumps(batch),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         res = json.loads(proc.stdout)
         summary = res["campaign_summary"]
@@ -68,14 +90,14 @@ class TestScriptCLI(unittest.TestCase):
             "comments": 5,
             "shares": 1,
             "saves": 4,
-            "reach": None
+            "reach": None,
         }
         proc = subprocess.run(
             [sys.executable, SCRIPT_PATH],
             input=json.dumps(input_data),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         res = json.loads(proc.stdout)
         self.assertEqual(res["known_engagement_actions"], 60)
