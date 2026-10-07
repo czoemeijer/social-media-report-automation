@@ -35,6 +35,7 @@ from scripts.dify_deploy import (
     resolve_settings,
     sanitize_model_bindings,
     smoke_test,
+    verify_deterministic_parity,
     verify_model_binding,
     verify_plugin,
 )
@@ -954,6 +955,112 @@ class TestYamlSafetyAndRuntime(unittest.TestCase):
         run_payload = client.calls[1]["payload"]
         self.assertIn("files", run_payload["inputs"])
         self.assertNotEqual(run_payload["inputs"]["files"], [])
+
+
+class TestDeterministicParity(unittest.TestCase):
+    def test_verify_deterministic_parity_passes_on_matching_audit(self) -> None:
+        from social_report.metrics import audit_campaign
+
+        client = FakeClient()
+        campaign_json = {
+            "assets": [
+                {
+                    "asset_group_id": "reel-1",
+                    "platform": "instagram",
+                    "content_format": "reel",
+                    "scope": "organic",
+                    "review_status": "verified",
+                    "metrics": {
+                        "views": {"value": 1000, "precision": "exact"},
+                        "reach": {"value": 800, "precision": "exact"},
+                        "likes": {"value": 50, "precision": "exact"},
+                    },
+                }
+            ]
+        }
+        computed_audit = audit_campaign(campaign_json)
+
+        # Queue workflow-runs response
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflow-runs?limit=10",
+            (200, {"data": [{"id": "run-123", "status": "succeeded"}]}),
+        )
+        # Queue node-executions response
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflow-runs/run-123/node-executions",
+            (
+                200,
+                {
+                    "data": [
+                        {
+                            "id": "node-1",
+                            "title": "Deterministic campaign audit",
+                            "inputs": {"campaign_json": campaign_json},
+                            "outputs": {"audit": computed_audit},
+                        }
+                    ]
+                },
+            ),
+        )
+
+        result = verify_deterministic_parity(client, "app-1")  # type: ignore[arg-type]
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["run_id"], "run-123")
+        self.assertEqual(result["diffs_count"], 0)
+        self.assertGreater(result["verified_fields_count"], 20)
+
+    def test_verify_deterministic_parity_fails_on_discrepancy(self) -> None:
+        from social_report.metrics import audit_campaign
+
+        client = FakeClient()
+        campaign_json = {
+            "assets": [
+                {
+                    "asset_group_id": "reel-1",
+                    "platform": "instagram",
+                    "content_format": "reel",
+                    "scope": "organic",
+                    "review_status": "verified",
+                    "metrics": {
+                        "views": {"value": 1000, "precision": "exact"},
+                        "reach": {"value": 800, "precision": "exact"},
+                        "likes": {"value": 50, "precision": "exact"},
+                    },
+                }
+            ]
+        }
+        computed_audit = audit_campaign(campaign_json)
+        # Mutate live audit to cause parity failure
+        tampered_audit = json.loads(json.dumps(computed_audit))
+        tampered_audit["review_status"] = "rejected"
+
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflow-runs?limit=10",
+            (200, {"data": [{"id": "run-123", "status": "succeeded"}]}),
+        )
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflow-runs/run-123/node-executions",
+            (
+                200,
+                {
+                    "data": [
+                        {
+                            "id": "node-1",
+                            "title": "Deterministic campaign audit",
+                            "inputs": {"campaign_json": campaign_json},
+                            "outputs": {"audit": tampered_audit},
+                        }
+                    ]
+                },
+            ),
+        )
+
+        with self.assertRaisesRegex(DeploymentError, "Deterministic parity failed"):
+            verify_deterministic_parity(client, "app-1")  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

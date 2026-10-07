@@ -1225,6 +1225,175 @@ def smoke_test(
     return result
 
 
+def verify_deterministic_parity(
+    client: DifyClient, app_id: str, run_id: Optional[str] = None
+) -> Dict[str, Any]:
+    from social_report.metrics import audit_campaign
+
+    if not client.settings.console_access_token or not client.settings.csrf_token:
+        raise DeploymentError("Console authentication is required to verify live parity")
+
+    target_run_id = run_id
+    if not target_run_id:
+        status, runs_data = client.get(
+            f"/console/api/apps/{urllib.parse.quote(app_id)}/workflow-runs?limit=10",
+            auth="console",
+        )
+        if status != 200 or not isinstance(runs_data, dict):
+            raise DeploymentError(f"Failed to fetch workflow runs with HTTP {status}")
+        runs = [
+            r
+            for r in runs_data.get("data", [])
+            if isinstance(r, dict) and r.get("status") == "succeeded"
+        ]
+        if not runs:
+            raise DeploymentError("No successful workflow runs found for parity verification")
+        target_run_id = runs[0].get("id")
+        if not isinstance(target_run_id, str) or not target_run_id:
+            raise DeploymentError("Workflow run missing id")
+
+    status, ne_data = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}/workflow-runs/{urllib.parse.quote(target_run_id)}/node-executions",
+        auth="console",
+    )
+    if status != 200 or not isinstance(ne_data, dict):
+        raise DeploymentError(f"Failed to fetch node executions for run {target_run_id}")
+
+    audit_nodes = [
+        ne
+        for ne in ne_data.get("data", [])
+        if isinstance(ne, dict)
+        and "audit" in str(ne.get("title", "")).lower()
+        and isinstance(ne.get("inputs"), dict)
+        and "campaign_json" in ne["inputs"]
+    ]
+    if not audit_nodes:
+        raise DeploymentError(f"No audit node execution found in run {target_run_id}")
+
+    node = audit_nodes[0]
+    campaign_input = node["inputs"]["campaign_json"]
+    live_audit = node.get("outputs", {}).get("audit")
+    if not isinstance(live_audit, dict):
+        raw_json = node.get("outputs", {}).get("audit_json")
+        if isinstance(raw_json, str):
+            live_audit = json.loads(raw_json)
+        else:
+            raise DeploymentError(f"Audit outputs missing in node execution {node.get('id')}")
+
+    local_audit = audit_campaign(campaign_input)
+
+    diffs: List[str] = []
+    verified_fields: List[str] = []
+
+    for field in ("review_status", "warnings"):
+        if local_audit.get(field) != live_audit.get(field):
+            diffs.append(
+                f"{field}: local={local_audit.get(field)!r} != live={live_audit.get(field)!r}"
+            )
+        else:
+            verified_fields.append(field)
+
+    local_summary = local_audit.get("campaign_summary", {})
+    live_summary = live_audit.get("campaign_summary", {})
+    summary_fields = (
+        "scope",
+        "asset_count",
+        "total_views",
+        "total_likes",
+        "total_comments",
+        "total_shares",
+        "total_saves",
+        "sum_of_content_reach",
+        "total_known_engagement_actions",
+        "total_platform_reported_interactions",
+        "weighted_calculated_er_by_reach",
+        "weighted_er_lower_bound_by_reach",
+        "er_is_complete",
+        "er_status",
+        "interaction_discrepancy_value",
+        "total_uncategorized_interactions",
+        "sum_of_content_reach_is_approximate",
+        "total_known_engagement_actions_is_approximate",
+        "weighted_er_is_approximate",
+        "overall_save_rate_is_approximate",
+        "overall_comment_to_like_ratio_is_approximate",
+    )
+    for field in summary_fields:
+        if local_summary.get(field) != live_summary.get(field):
+            diffs.append(
+                f"campaign_summary.{field}: local={local_summary.get(field)!r} != live={live_summary.get(field)!r}"
+            )
+        else:
+            verified_fields.append(f"campaign_summary.{field}")
+
+    local_buckets = local_summary.get("scope_buckets", {})
+    live_buckets = live_summary.get("scope_buckets", {})
+    for bucket_name in ("organic", "paid", "mixed_or_unknown", "unknown"):
+        loc_b = local_buckets.get(bucket_name, {})
+        liv_b = live_buckets.get(bucket_name, {})
+        for field in (
+            "scope",
+            "asset_count",
+            "total_views",
+            "total_likes",
+            "total_comments",
+            "total_shares",
+            "total_saves",
+            "sum_of_content_reach",
+            "total_known_engagement_actions",
+            "weighted_er_lower_bound_by_reach",
+            "er_status",
+        ):
+            if loc_b.get(field) != liv_b.get(field):
+                diffs.append(
+                    f"scope_buckets[{bucket_name}].{field}: local={loc_b.get(field)!r} != live={liv_b.get(field)!r}"
+                )
+            else:
+                verified_fields.append(f"scope_buckets[{bucket_name}].{field}")
+
+    local_assets = {
+        a.get("asset_group_id"): a for a in local_audit.get("assets", []) if isinstance(a, dict)
+    }
+    live_assets = {
+        a.get("asset_group_id"): a for a in live_audit.get("assets", []) if isinstance(a, dict)
+    }
+    if set(local_assets.keys()) != set(live_assets.keys()):
+        diffs.append(
+            f"asset_group_ids mismatch: local={sorted(local_assets.keys())} != live={sorted(live_assets.keys())}"
+        )
+    else:
+        for aid, loc_a in local_assets.items():
+            liv_a = live_assets[aid]
+            for field in (
+                "platform",
+                "content_format",
+                "scope",
+                "review_status",
+                "known_engagement_actions",
+                "calculated_er_by_reach",
+                "er_lower_bound_by_reach",
+                "interaction_discrepancy_value",
+            ):
+                if loc_a.get(field) != liv_a.get(field):
+                    diffs.append(
+                        f"asset[{aid}].{field}: local={loc_a.get(field)!r} != live={liv_a.get(field)!r}"
+                    )
+                else:
+                    verified_fields.append(f"asset[{aid}].{field}")
+
+    if diffs:
+        raise DeploymentError(
+            f"Deterministic parity failed with {len(diffs)} diffs: {'; '.join(diffs[:5])}"
+        )
+
+    return {
+        "status": "PASS",
+        "run_id": target_run_id,
+        "verified_fields_count": len(verified_fields),
+        "diffs_count": 0,
+    }
+
+
 def _dsl_structure(yaml_content: str) -> Dict[str, Any]:
     data = yaml.safe_load(yaml_content)
     nodes = data.get("workflow", {}).get("graph", {}).get("nodes", [])
@@ -1356,6 +1525,14 @@ def _build_parser() -> argparse.ArgumentParser:
     live.add_argument("--mode", choices=("draft", "published"), default="draft")
     live.add_argument("--confirm-live", action="store_true")
     live.add_argument("--plugin-identifier", default="")
+    parity = commands.add_parser(
+        "verify-parity", help="Compare deterministic fields between local core and live Dify audit"
+    )
+    parity.add_argument("app_id")
+    parity.add_argument(
+        "--run-id", default=None, help="Workflow run ID to verify (defaults to latest succeeded)"
+    )
+    parity.add_argument("--confirm-live", action="store_true")
     return parser
 
 
@@ -1439,6 +1616,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "run": run,
                 }
             )
+            return 0
+        if args.command == "verify-parity":
+            if not args.confirm_live and os.environ.get("DIFY_LIVE_TEST") != "1":
+                raise DeploymentError(
+                    "Live parity verification is opt-in; set DIFY_LIVE_TEST=1 or pass --confirm-live"
+                )
+            _print_result(verify_deterministic_parity(client, args.app_id, args.run_id))
             return 0
         raise DeploymentError(f"Unknown command: {args.command}")
     except DeploymentError as exc:
