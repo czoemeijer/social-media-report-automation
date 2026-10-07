@@ -454,12 +454,12 @@ workflow:
       - data:
           desc: Extract each reconstructed asset with only its selected screenshots.
           error_handle_mode: terminated
-          is_parallel: true
+          is_parallel: false
           iterator_input_type: array[object]
           iterator_selector: [reconstruct, structured_output, assets]
           output_selector: [extract_asset, structured_output]
           output_type: array[object]
-          parallel_nums: 4
+          parallel_nums: 1
           selected: false
           start_node_id: extract_iterationstart
           title: Asset extraction
@@ -704,11 +704,11 @@ workflow:
         width: 250
       - data:
           desc: Targeted review of low-confidence or disputed assets only.
-          is_parallel: true
+          is_parallel: false
           iterator_selector: [filter_review_assets, review_assets]
           output_selector: [second_pass, structured_output]
           output_type: array[object]
-          parallel_nums: 4
+          parallel_nums: 1
           selected: false
           start_node_id: review_iterationstart
           title: Review iteration

@@ -12,8 +12,8 @@ class DifyDslTest(unittest.TestCase):
         data = validate(root / "deploy" / "dify" / "social-media-report.yml")
         nodes = data["workflow"]["graph"]["nodes"]
         extraction_iteration = next(node for node in nodes if node["id"] == "extract_iteration")
-        self.assertTrue(extraction_iteration["data"]["is_parallel"])
-        self.assertEqual(extraction_iteration["data"]["parallel_nums"], 4)
+        self.assertFalse(extraction_iteration["data"]["is_parallel"])
+        self.assertEqual(extraction_iteration["data"]["parallel_nums"], 1)
         self.assertTrue(
             next(node for node in nodes if node["id"] == "reconstruct")["data"][
                 "structured_output_enabled"
@@ -41,6 +41,8 @@ class DifyDslTest(unittest.TestCase):
         review_iter = next(node for node in nodes if node["id"] == "review_iteration")
         self.assertEqual(review_iter["data"]["type"], "iteration")
         self.assertNotIn("error_strategy", review_iter["data"])
+        self.assertFalse(review_iter["data"]["is_parallel"])
+        self.assertEqual(review_iter["data"]["parallel_nums"], 1)
         self.assertEqual(
             review_iter["data"]["iterator_selector"],
             ["filter_review_assets", "review_assets"],
