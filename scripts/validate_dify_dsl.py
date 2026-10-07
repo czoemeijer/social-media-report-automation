@@ -29,7 +29,7 @@ def validate(path: Path) -> dict[str, Any]:
     dependency = (
         data.get("dependencies", [{}])[0].get("value", {}).get("plugin_unique_identifier", "")
     )
-    if not re.fullmatch(r"czoemeijer/dify-social-report:0\.1\.0@[0-9a-f]{64}", dependency):
+    if not re.fullmatch(r"czoemeijer/dify-social-report:0\.1\.1@[0-9a-f]{64}", dependency):
         raise ValueError("DSL plugin dependency is missing or malformed")
 
     graph = data.get("workflow", {}).get("graph", {})
@@ -43,6 +43,11 @@ def validate(path: Path) -> dict[str, Any]:
         parent = node.get("parentId")
         if parent and parent not in known_ids:
             raise ValueError(f"node {node.get('id')} has missing parent {parent}")
+        error_strategy = node.get("data", {}).get("error_strategy")
+        if error_strategy not in {None, "fail-branch", "default-value"}:
+            raise ValueError(
+                f"node {node.get('id')} uses unsupported error strategy {error_strategy!r}"
+            )
     for edge in edges:
         if edge.get("source") not in known_ids or edge.get("target") not in known_ids:
             raise ValueError(f"edge {edge.get('id')} references a missing node")

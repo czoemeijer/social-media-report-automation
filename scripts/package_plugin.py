@@ -27,7 +27,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "dist" / "dify-social-report-0.1.0.difypkg",
+        default=ROOT / "dist" / "dify-social-report-0.1.1.difypkg",
     )
     parser.add_argument(
         "--cli",

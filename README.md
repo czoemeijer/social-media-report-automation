@@ -66,7 +66,7 @@ uv run python scripts/dify_deploy.py discover
 Then:
 
 1. Configure distinct account OpenAPI and Console/CSRF credentials in the ignored `.env.local`.
-2. Install and verify `dist/dify-social-report-0.1.0.difypkg` with `dify_deploy.py install-plugin`.
+2. Install and verify `dist/dify-social-report-0.1.1.difypkg` with `dify_deploy.py install-plugin`.
 3. Import or update `deploy/dify/social-media-report.yml` with `dify_deploy.py import-workflow`.
 4. Select the same suitable vision model in the reconstruction, extraction, second-pass, and report
    writer LLM nodes. The committed DSL intentionally has no provider/model hard-code.

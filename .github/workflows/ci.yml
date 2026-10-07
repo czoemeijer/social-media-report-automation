@@ -60,14 +60,14 @@ jobs:
           chmod +x /tmp/dify-plugin
           /tmp/dify-plugin version
       - run: uv run python scripts/package_plugin.py --cli /tmp/dify-plugin
-      - run: unzip -t dist/dify-social-report-0.1.0.difypkg
+      - run: unzip -t dist/dify-social-report-0.1.1.difypkg
       - name: Check DSL dependency checksum
         run: |
-          package_checksum=$(/tmp/dify-plugin plugin checksum dist/dify-social-report-0.1.0.difypkg 2>&1 | sed -n 's/.*checksum=//p')
+          package_checksum=$(/tmp/dify-plugin plugin checksum dist/dify-social-report-0.1.1.difypkg 2>&1 | sed -n 's/.*checksum=//p')
           grep -q "@${package_checksum}" deploy/dify/social-media-report.yml
       - name: Import packaged plugin modules
         run: |
           mkdir plugin-smoke
-          unzip -q dist/dify-social-report-0.1.0.difypkg -d plugin-smoke
+          unzip -q dist/dify-social-report-0.1.1.difypkg -d plugin-smoke
           cd plugin-smoke
           uv run --with 'dify-plugin>=0.9.0,<0.10.0' --with 'Pillow>=10.3,<13' python -c "import importlib; [importlib.import_module(name) for name in ['main','provider.social_report','tools.prepare_campaign_input','tools.unpack_campaign_archive','tools.select_asset_files','tools.validate_extraction','tools.audit_campaign','tools.export_campaign']]"

@@ -19,6 +19,10 @@ class DifyDslTest(unittest.TestCase):
                 "structured_output_enabled"
             ]
         )
+        start = next(node for node in nodes if node["id"] == "start")
+        upload = start["data"]["variables"][0]
+        self.assertIn("custom", upload["allowed_file_types"])
+        self.assertIn(".ZIP", upload["allowed_file_extensions"])
 
     def test_targeted_second_pass_dsl_structure(self):
         root = Path(__file__).resolve().parents[1]
@@ -36,6 +40,7 @@ class DifyDslTest(unittest.TestCase):
         # 2. review_iteration node iterates over [filter_review_assets, review_assets]
         review_iter = next(node for node in nodes if node["id"] == "review_iteration")
         self.assertEqual(review_iter["data"]["type"], "iteration")
+        self.assertNotIn("error_strategy", review_iter["data"])
         self.assertEqual(
             review_iter["data"]["iterator_selector"],
             ["filter_review_assets", "review_assets"],

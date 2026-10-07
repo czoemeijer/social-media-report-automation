@@ -10,7 +10,7 @@ dependencies:
   - current_identifier: null
     type: package
     value:
-      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.0@9f1de1d1d85576c7ebf3bb793320413eb7aa5db1874884c42db96ec86a1f4d0a
+      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.1@d5a76690f4e0a153455a3f6f2bafef28197ac722ff67124ee226e9a3ed8f354d
 kind: app
 version: 0.6.0
 workflow:
@@ -28,6 +28,7 @@ workflow:
       allowed_file_types:
         - image
         - document
+        - custom
       allowed_file_upload_methods:
         - local_file
       enabled: true
@@ -283,7 +284,7 @@ workflow:
           type: start
           variables:
             - allowed_file_extensions: [.PNG, .JPG, .JPEG, .WEBP, .GIF, .ZIP]
-              allowed_file_types: [image, document]
+              allowed_file_types: [image, document, custom]
               allowed_file_upload_methods: [local_file]
               default: ''
               hide: false
@@ -387,7 +388,10 @@ workflow:
                 Reconstruct one campaign from all evidence. Paths and filenames are weak contextual
                 signals; visible platform UI and content evidence win conflicts. Group tabs, scroll
                 slices, and later snapshots into logical assets. Never guess confident names. Use
-                only the configured structured output.
+                only the configured structured output. Every asset must contain at least one
+                source_files entry copied exactly from the manifest: prefer relative_path when it
+                is non-null, otherwise use transport_name. Never emit an asset with an empty
+                source_files list. Relationship file values must use the same exact manifest names.
             - role: user
               text: |-
                 Manifest: {{#normalize.manifest_json#}}
@@ -689,7 +693,6 @@ workflow:
         width: 250
       - data:
           desc: Targeted review of low-confidence or disputed assets only.
-          error_strategy: parallel-continue
           is_parallel: true
           iterator_selector: [filter_review_assets, review_assets]
           output_selector: [second_pass, structured_output]
