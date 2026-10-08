@@ -169,7 +169,7 @@ class OwnedReportingTest(unittest.TestCase):
             _content("external", organic=None, reference_only=True),
         ]
         markdown = export_owned_markdown(payload).decode()
-        self.assertIn("| 2.50 | 2.00 | 500 | Unavailable |", markdown)
+        self.assertIn("| Media #02 | 2.50 | 2.00 | 500 | Unavailable |", markdown)
         self.assertIn("2 (1 reference-only)", markdown)
         self.assertNotIn("external | Unavailable", markdown)
 
@@ -202,7 +202,7 @@ class OwnedReportingTest(unittest.TestCase):
         first = export_owned_markdown(payload)
         self.assertEqual(first, export_owned_markdown(payload))
         markdown = first.decode()
-        self.assertIn("Most viewed organic item: a (10)", markdown)
+        self.assertIn("Most viewed organic item: Media #01 (10)", markdown)
         self.assertIn("Best \\| campaign name", markdown)
         self.assertLess(markdown.index("Best \\| campaign name"), markdown.index("Second"))
 

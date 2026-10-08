@@ -70,6 +70,21 @@ def _content_rows(payload: Mapping[str, object]) -> List[Mapping[str, object]]:
     )
 
 
+def _media_labels(content: Sequence[Mapping[str, object]]) -> Mapping[str, str]:
+    width = max(2, len(str(len(content))))
+    return {
+        str(_mapping(item.get("identity")).get("media_id") or "unknown"): (
+            f"Media #{index:0{width}d}"
+        )
+        for index, item in enumerate(content, 1)
+    }
+
+
+def _display_date(value: object) -> object:
+    text = str(value or "")
+    return text[:10] if len(text) >= 10 and text[4:5] == "-" and text[7:8] == "-" else value
+
+
 def export_owned_csv(payload: Mapping[str, object]) -> bytes:
     output = io.StringIO()
     fields = [
@@ -241,6 +256,7 @@ def _append_budget(lines: List[str], payload: Mapping[str, object], currency: ob
 
 def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
     content = _content_rows(payload)
+    labels = _media_labels(content)
     organic = _organic_items(content)
     matches = _rows(payload.get("paid_organic_matches"))
     matched_count = sum(row.get("status") == "matched" for row in matches)
@@ -314,9 +330,9 @@ def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
         metrics = _mapping(item.get("organic"))
         organic_table.append(
             (
-                identity.get("timestamp"),
+                _display_date(identity.get("timestamp")),
                 identity.get("media_product_type") or identity.get("media_type"),
-                identity.get("media_id"),
+                labels.get(str(identity.get("media_id"))),
                 _number(metrics.get("views")),
                 _number(metrics.get("reach")),
                 _number(metrics.get("likes")),
@@ -355,8 +371,8 @@ def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
         total = _decimal(metrics.get("total_watch_time_ms"))
         reel_table.append(
             (
-                identity.get("timestamp"),
-                identity.get("media_id"),
+                _display_date(identity.get("timestamp")),
+                labels.get(str(identity.get("media_id"))),
                 _number(average / 1000 if average is not None else None, places=2),
                 _number(total / Decimal("3600000") if total is not None else None, places=2),
                 _number(metrics.get("views")),
@@ -406,7 +422,7 @@ def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
         )
         matched_table.append(
             (
-                identity.get("media_id"),
+                labels.get(str(identity.get("media_id"))),
                 len(paid_rows),
                 _money(summary.get("spend"), currency),
                 _number(summary.get("impressions")),
@@ -431,7 +447,7 @@ def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
     ):
         top = _top_content(organic, metric)
         lines.append(
-            f"- {label}: {_escape(top[0])} ({_number(top[1])})"
+            f"- {label}: {_escape(labels.get(top[0], top[0]))} ({_number(top[1])})"
             if top
             else f"- {label}: Unavailable"
         )
@@ -454,6 +470,7 @@ def export_owned_markdown(payload: Mapping[str, object]) -> bytes:
             "- Paid headline KPIs come only from account-level Insights for the report period.",
             "- Content and campaign reach are never summed when multiple rows may overlap.",
             "- Platform-reported total interactions remain separate from component sums.",
+            "- Human-readable media labels map deterministically to full IDs retained in JSON/CSV.",
         ]
     )
     if len(account_rows) > 1:

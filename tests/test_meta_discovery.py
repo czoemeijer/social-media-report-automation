@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from social_report.sources.meta.auth import MetaConfig
+from social_report.sources.meta.client import MetaAPIError
 from social_report.sources.meta.discovery import (
     AssetResolutionError,
     discover_assets,
@@ -21,14 +22,25 @@ class FakeClient:
             yield {"id": "act_1", "account_status": 1}
 
 
+class DirectClient:
+    def __init__(self, responses=None, failures=()):
+        self.responses = responses or {}
+        self.failures = set(failures)
+
+    def get(self, path, params=None):
+        if path in self.failures:
+            raise MetaAPIError("not accessible", status=403, code=10)
+        return self.responses[path]
+
+
 class MetaDiscoveryTest(unittest.TestCase):
     def test_single_relationship_auto_resolves(self):
         assets = discover_assets(FakeClient())
         selected = resolve_assets(assets, MetaConfig(access_token="token"))
-        self.assertEqual(
-            selected,
-            {"page_id": "page-1", "ig_user_id": "ig-1", "ad_account_id": "act_1"},
-        )
+        self.assertEqual(selected["page_id"], "page-1")
+        self.assertEqual(selected["ig_user_id"], "ig-1")
+        self.assertEqual(selected["ad_account_id"], "act_1")
+        self.assertEqual(selected["validation"]["page"], "ENUMERATED")
 
     def test_multiple_pages_require_explicit_selection(self):
         assets = {
@@ -104,6 +116,85 @@ class MetaDiscoveryTest(unittest.TestCase):
         selected = resolve_assets(assets, MetaConfig(access_token="token"))
         self.assertEqual(selected["page_id"], "linked")
         self.assertEqual(selected["ig_user_id"], "ig")
+
+    def test_explicit_page_can_be_directly_accessible_without_enumeration(self):
+        client = DirectClient({"configured-page": {"id": "configured-page"}})
+        selected = resolve_assets(
+            {"pages": [], "ad_accounts": []},
+            MetaConfig(access_token="token", page_id="configured-page"),
+            client=client,
+            resolve_ad_account=False,
+        )
+        self.assertEqual(selected["page_id"], "configured-page")
+        self.assertEqual(selected["validation"]["page"], "DIRECTLY_ACCESSIBLE")
+
+    def test_direct_page_relationship_confirms_direct_instagram(self):
+        client = DirectClient(
+            {
+                "configured-page": {
+                    "id": "configured-page",
+                    "instagram_business_account": {"id": "configured-ig"},
+                },
+                "configured-ig": {"id": "configured-ig"},
+            }
+        )
+        selected = resolve_assets(
+            {"pages": [], "ad_accounts": []},
+            MetaConfig(
+                access_token="token",
+                page_id="configured-page",
+                ig_user_id="configured-ig",
+            ),
+            client=client,
+            resolve_ad_account=False,
+        )
+        self.assertEqual(
+            selected["validation"]["page_instagram_relationship"],
+            "RELATIONSHIP_VERIFIED",
+        )
+        self.assertEqual(selected["validation"]["instagram"], "DIRECTLY_ACCESSIBLE")
+
+    def test_explicit_page_direct_failure_is_rejected(self):
+        with self.assertRaisesRegex(AssetResolutionError, "not directly accessible"):
+            resolve_assets(
+                {"pages": [], "ad_accounts": []},
+                MetaConfig(access_token="token", page_id="configured-page"),
+                client=DirectClient(failures=("configured-page",)),
+                resolve_ad_account=False,
+            )
+
+    def test_direct_page_link_to_different_instagram_is_rejected(self):
+        client = DirectClient(
+            {
+                "configured-page": {
+                    "id": "configured-page",
+                    "instagram_business_account": {"id": "different-ig"},
+                },
+                "configured-ig": {"id": "configured-ig"},
+            }
+        )
+        with self.assertRaisesRegex(AssetResolutionError, "not linked"):
+            resolve_assets(
+                {"pages": [], "ad_accounts": []},
+                MetaConfig(
+                    access_token="token",
+                    page_id="configured-page",
+                    ig_user_id="configured-ig",
+                ),
+                client=client,
+                resolve_ad_account=False,
+            )
+
+    def test_explicit_ad_account_can_be_directly_accessible_without_enumeration(self):
+        client = DirectClient({"act_42": {"id": "act_42", "account_status": 1}})
+        selected = resolve_assets(
+            {"pages": [], "ad_accounts": []},
+            MetaConfig(access_token="token", ad_account_id="42"),
+            client=client,
+            resolve_page=False,
+        )
+        self.assertEqual(selected["ad_account_id"], "act_42")
+        self.assertEqual(selected["validation"]["ad_account"], "DIRECTLY_ACCESSIBLE")
 
 
 if __name__ == "__main__":

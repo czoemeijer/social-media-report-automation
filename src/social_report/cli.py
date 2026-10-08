@@ -13,11 +13,16 @@ from .owned_reporting import export_owned_csv, export_owned_json, export_owned_m
 from .sources.meta.ads import collect_ads
 from .sources.meta.auth import MetaConfig, load_env_file
 from .sources.meta.client import MetaAPIError, MetaClient
-from .sources.meta.discovery import AssetResolutionError, discover_assets, resolve_assets
+from .sources.meta.discovery import (
+    AssetResolutionError,
+    ResolvedAssets,
+    discover_assets,
+    resolve_assets,
+)
 from .sources.meta.instagram import collect_instagram, resolve_creative_media_references
 from .sources.meta.mapper import build_owned_media_report
 from .sources.meta.matching import match_paid_to_organic
-from .sources.meta.tokens import debug_token, exchange_user_token
+from .sources.meta.tokens import debug_token, exchange_user_token, token_lifecycle_status
 
 
 def _config() -> MetaConfig:
@@ -63,10 +68,11 @@ def _resolved(
     *,
     resolve_page: bool = True,
     resolve_ad_account: bool = True,
-) -> Mapping[str, Optional[str]]:
+) -> ResolvedAssets:
     return resolve_assets(
         discover_assets(client),
         config,
+        client=client,
         resolve_page=resolve_page,
         resolve_ad_account=resolve_ad_account,
     )
@@ -92,8 +98,15 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     if config.app_id and config.app_secret:
         try:
             token = debug_token(config, transport=client.transport)
-            validity = "valid" if token.get("is_valid") else "invalid"
-            add("token_debug", "PASS" if token.get("is_valid") else "FAIL", validity)
+            lifecycle = token_lifecycle_status(token)
+            missing = lifecycle.get("missing_scopes")
+            missing_count = len(missing) if isinstance(missing, list) else 0
+            detail = (
+                f"{lifecycle.get('renewal')}; "
+                f"days remaining: {lifecycle.get('days_remaining')}; "
+                f"missing required scopes: {missing_count}"
+            )
+            add("token_debug", str(lifecycle.get("status", "WARNING")), detail)
         except MetaAPIError as exc:
             add("token_debug", "WARNING", f"unavailable (code {exc.code})")
     else:
@@ -101,10 +114,25 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     try:
         assets = discover_assets(client)
         add("asset_discovery", "PASS", "authorized assets listed")
-        selected = resolve_assets(assets, config)
+        selected = resolve_assets(assets, config, client=client)
+        validation = selected["validation"]
+        for key, label in (
+            ("page", "page_selector"),
+            ("instagram", "instagram_selector"),
+            ("page_instagram_relationship", "page_instagram_relationship"),
+            ("ad_account", "ad_account_selector"),
+        ):
+            state = validation.get(key)
+            if state:
+                add(label, "WARNING" if state == "RELATIONSHIP_UNVERIFIED" else "PASS", state)
     except AssetResolutionError as exc:
         add("asset_resolution", "WARNING", str(exc))
-        selected = {"page_id": None, "ig_user_id": None, "ad_account_id": None}
+        selected = {
+            "page_id": None,
+            "ig_user_id": None,
+            "ad_account_id": None,
+            "validation": {},
+        }
     instagram_result: Optional[Mapping[str, object]] = None
     ig_id = selected.get("ig_user_id")
     if ig_id:
@@ -164,7 +192,7 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
         "FAIL"
         if any(row["status"] == "FAIL" for row in checks)
         else "WARNING"
-        if any(row["status"] == "WARNING" for row in checks)
+        if any(row["status"] in {"WARNING", "CRITICAL"} for row in checks)
         else "PASS"
     )
     return {"overall": overall, "checks": checks, "configuration": config.safe_summary()}
