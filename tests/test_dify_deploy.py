@@ -21,6 +21,7 @@ from scripts.dify_deploy import (
     assert_workflow_outputs,
     bind_models,
     bind_plugin_dependency,
+    check_readiness,
     discover_server,
     discover_vision_models,
     expected_plugin_identifier,
@@ -32,6 +33,7 @@ from scripts.dify_deploy import (
     parse_env_file,
     parse_sse_workflow_result,
     poll_plugin_task,
+    publish_workflow,
     resolve_settings,
     sanitize_model_bindings,
     smoke_test,
@@ -69,6 +71,21 @@ class FakeClient:
     def refresh_catalog(self) -> None:
         self.calls.append({"method": "CATALOG", "path": "/openapi/v1/_catalog", "auth": "none"})
         self.catalog_fingerprint = "a" * 64
+
+    def queue_discovery_1_17_1(self) -> None:
+        self.queue(
+            "GET",
+            "/openapi/v1/_version",
+            (200, {"version": "1.17.1", "edition": "SELF_HOSTED"}),
+        )
+        self.queue("GET", "/openapi/v1/_health", (200, {"ok": True}))
+        self.queue("GET", "/openapi/v1/workspaces", (200, {"data": []}))
+        self.queue("GET", "/console/api/account/profile", (200, {"id": "account"}))
+        self.queue(
+            "GET",
+            "/console/api/workspaces/current/models/model-types/llm",
+            (200, {"data": []}),
+        )
 
     def _response(self, method: str, path: str) -> Tuple[int, Any]:
         try:
@@ -1061,6 +1078,138 @@ class TestDeterministicParity(unittest.TestCase):
 
         with self.assertRaisesRegex(DeploymentError, "Deterministic parity failed"):
             verify_deterministic_parity(client, "app-1")  # type: ignore[arg-type]
+
+    def test_publish_workflow_success(self):
+        client = FakeClient()
+        client.queue_discovery_1_17_1()
+        client.queue(
+            "GET",
+            "/openapi/v1/apps/app-1/dependencies:check",
+            (200, {"leaked_dependencies": []}),
+        )
+        client.queue(
+            "POST",
+            "/console/api/apps/app-1/workflows/publish",
+            (200, {"result": "success", "created_at": 1791497500}),
+        )
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflows/publish",
+            (200, {"version": "2026-10-08 22:00:00", "version_number": 1}),
+        )
+
+        res = publish_workflow(
+            client,  # type: ignore[arg-type]
+            "app-1",
+            marked_name="v1",
+            marked_comment="Initial publish",
+        )
+        self.assertEqual(res["status"], "PUBLISHED")
+        self.assertEqual(res["version_number"], 1)
+        self.assertEqual(res["publishability"], "PASS")
+
+    def test_publish_workflow_requires_console_auth(self):
+        client = FakeClient(
+            settings=DifySettings(
+                base_url="https://dify.example.com",
+                workspace_id="ws-1",
+                openapi_token="openapi-secret",
+                console_access_token="",
+                csrf_token="",
+            )
+        )
+        client.queue_discovery_1_17_1()
+        with self.assertRaisesRegex(DeploymentError, "Console authentication is required"):
+            publish_workflow(client, "app-1")  # type: ignore[arg-type]
+
+    def test_publish_workflow_fails_on_unresolved_dependencies(self):
+        client = FakeClient()
+        client.queue_discovery_1_17_1()
+        client.queue(
+            "GET",
+            "/openapi/v1/apps/app-1/dependencies:check",
+            (200, {"leaked_dependencies": ["missing_tool"]}),
+        )
+        with self.assertRaisesRegex(DeploymentError, "unresolved plugin dependencies"):
+            publish_workflow(client, "app-1")  # type: ignore[arg-type]
+
+    def test_check_readiness_all_pass(self):
+        identifier = expected_plugin_identifier()
+        client = FakeClient()
+        client.queue_discovery_1_17_1()
+        client.queue(
+            "GET",
+            "/console/api/workspaces/current/plugin/list?page=1&page_size=256",
+            (200, {"plugins": [_plugin_list_item(identifier)]}),
+        )
+        client.queue(
+            "GET",
+            "/console/api/workspaces/current/tool-providers",
+            (200, [_provider(identifier, None)]),
+        )
+        client.queue(
+            "GET",
+            (
+                "/console/api/workspaces/current/tool-provider/builtin/"
+                "czoemeijer/dify-social-report/social_report/tools"
+            ),
+            (200, [{"name": name} for name in expected_tool_names()]),
+        )
+        # dependencies check
+        client.queue(
+            "GET",
+            "/openapi/v1/apps/app-1/dependencies:check",
+            (200, {"leaked_dependencies": []}),
+        )
+        # draft
+        nodes = [{"id": f"node-{i}", "data": {"type": "code"}} for i in range(11)]
+        nodes.extend([{"id": f"tool-{i}", "data": {"type": "tool"}} for i in range(9)])
+        nodes.extend(
+            [
+                {
+                    "id": f"llm-{i}",
+                    "data": {"type": "llm", "model": {"provider": "p1", "name": "m1"}},
+                }
+                for i in range(4)
+            ]
+        )
+        edges = [{"source": f"n{i}", "target": f"n{i+1}"} for i in range(24)]
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflows/draft",
+            (200, {"graph": {"nodes": nodes, "edges": edges}}),
+        )
+        # publish status
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflows/publish",
+            (200, {"version": "2026-10-08", "version_number": 1}),
+        )
+        # app site
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1",
+            (200, {"enable_site": True, "site": {"code": "abc123xyz"}}),
+        )
+        # runs
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflow-runs?limit=5",
+            (200, {"data": [{"id": "r1", "status": "succeeded"}]}),
+        )
+
+        readiness = check_readiness(client, "app-1")  # type: ignore[arg-type]
+        self.assertEqual(readiness["server"], "PASS")
+        self.assertEqual(readiness["version"], "PASS")
+        self.assertEqual(readiness["auth_openapi"], "PASS")
+        self.assertEqual(readiness["auth_console"], "PASS")
+        self.assertEqual(readiness["plugin"], "PASS")
+        self.assertEqual(readiness["tools_6_of_6"], "PASS")
+        self.assertEqual(readiness["dependencies"], "PASS")
+        self.assertEqual(readiness["draft_structure"], "PASS")
+        self.assertEqual(readiness["published_state"], "PASS")
+        self.assertEqual(readiness["webapp"], "PASS")
+        self.assertEqual(readiness["publishability"], "PASS")
 
 
 if __name__ == "__main__":

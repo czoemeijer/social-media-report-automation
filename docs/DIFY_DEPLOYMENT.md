@@ -128,6 +128,36 @@ The combined live check is opt-in so normal CI cannot spend model credits:
 DIFY_LIVE_TEST=1 uv run python scripts/dify_deploy.py verify-live APP_ID --synthetic zip
 ```
 
+## Deployment readiness and publishing
+
+Before publishing or running tests, verify all deployment gates using `readiness`:
+
+```bash
+uv run python scripts/dify_deploy.py readiness APP_ID
+```
+
+This gate validates:
+- Dify server health and released version contract (`1.17.1` or `1.14.2`);
+- OpenAPI and Console authentication states;
+- Exact project plugin installation, provider loading, and 6/6 deterministic tools;
+- Active vision/multimodal model configuration across all LLM nodes;
+- Zero leaked plugin dependencies (`dependencies:check`);
+- Draft workflow structural parity (24 nodes, 24 edges, 9 tool nodes);
+- Published state and public WebApp URL.
+
+### Publishing the workflow
+
+Once readiness reports `publishability: PASS`, publish the draft through the Console API:
+
+```bash
+uv run python scripts/dify_deploy.py publish APP_ID
+```
+
+Optional arguments:
+- `--marked-name`: version title tag (e.g. `v0.1.1`).
+- `--marked-comment`: description of the publication change.
+- `--plugin-identifier`: explicit plugin unique identifier if overriding the default DSL checksum.
+
 ## Safe export
 
 ```bash
@@ -161,6 +191,16 @@ In containerized deployments, Dify's internal nginx proxy may cache upstream con
 If service containers (such as the plugin daemon) restart with newly assigned internal IPs, nginx
 may return `502 Bad Gateway` until its resolver TTL expires or the nginx container is reloaded
 (`docker exec docker-nginx-1 nginx -s reload`).
+
+### Operational note: Plugin daemon version and model bindings
+
+In Dify `1.17.1`, opening the workflow editor in the web UI triggers a request to
+`/console/api/workspaces/current/model-providers/summary`. In self-hosted setups where `plugin_daemon`
+is running an earlier release (e.g. `0.6.1-local` instead of `0.6.10-local`), the daemon lacks the
+`/management/models/bindings` endpoint. If unhandled by the backend, this 404 response causes a 500
+Internal Server Error on the summary API, resulting in disabled model nodes and blocking Web UI publishing.
+Ensuring the API handles 404 from daemon bindings gracefully or aligning the plugin daemon version
+restores model summary metadata and unblocks web-based workflow publishing.
 
 Only record `LIVE_DIFY_VERIFIED` after plugin installation, dependency checking, model binding, and
 the required synthetic draft scenarios have actually completed on the named Dify/model combination.

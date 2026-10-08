@@ -37,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scope buckets, signed interaction discrepancies, Story temporal safeguards, and lightweight
   perceptual duplicate support.
 - Synthetic evaluation fixture generator and deterministic scoring harness.
-- Privacy, deployment, architecture, and security documentation.
+- Dify workflow deployment helper `publish` and comprehensive `readiness` validation commands.
+- Enhanced self-hosted Dify 1.17.1 compatibility for model providers summary metadata and signed plugin verification.
 
 ### Changed
 - Removed redundant ad set metadata reads while preserving period-scoped ad set Insights and the
