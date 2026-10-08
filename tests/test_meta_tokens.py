@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import stat
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -30,6 +31,15 @@ def _debug(*, days: float | None = 30, valid: bool = True) -> dict[str, object]:
 
 class ExchangeTransport:
     def __call__(self, url, timeout, user_agent):
+        if "debug_token" in url:
+            payload = {
+                "data": {
+                    "app_id": "app",
+                    "is_valid": True,
+                    "scopes": list(REQUIRED_REPORTING_SCOPES),
+                }
+            }
+            return HTTPResponse(200, {}, json.dumps(payload).encode())
         return HTTPResponse(200, {}, b'{"access_token":"long-lived-secret","expires_in":3600}')
 
 
@@ -92,6 +102,20 @@ class TokenLifecycleTest(unittest.TestCase):
         self.assertNotIn("short-secret", str(raised.exception))
         self.assertNotIn("app-secret", str(raised.exception))
         self.assertNotIn("short-secret", str(raised.exception.request_url))
+
+    def test_invalid_exchanged_candidate_is_never_written(self):
+        class InvalidCandidateTransport:
+            def __call__(self, url, timeout, user_agent):
+                if "debug_token" in url:
+                    return HTTPResponse(200, {}, b'{"data":{"app_id":"app","is_valid":false}}')
+                return HTTPResponse(200, {}, b'{"access_token":"candidate-secret"}')
+
+        config = MetaConfig(access_token="short-secret", app_id="app", app_secret="app-secret")
+        with TemporaryDirectory() as temp:
+            target = Path(temp) / "token.secret"
+            with self.assertRaisesRegex(MetaConfigurationError, "invalid exchanged token"):
+                exchange_user_token(config, save_to=target, transport=InvalidCandidateTransport())
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

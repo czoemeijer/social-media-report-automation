@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,7 +33,7 @@ from social_report.owned_workflow import (
     snapshot_status,
 )
 from social_report.sources.meta.auth import MetaConfig
-from social_report.sources.meta.client import MetaAPIError
+from social_report.sources.meta.client import ErrorCategory, MetaAPIError
 
 
 def _report() -> dict[str, object]:
@@ -131,6 +134,12 @@ def _report() -> dict[str, object]:
         ],
         "warnings": ["Organic and paid reach are non-additive."],
     }
+
+
+def _report_for_period(date_from: str, date_to: str) -> dict[str, object]:
+    report = json.loads(json.dumps(_report()))
+    report["report_period"] = {"date_from": date_from, "date_to": date_to}
+    return report
 
 
 class OwnedAnalyticsTest(unittest.TestCase):
@@ -310,6 +319,13 @@ class OwnedWorkflowTest(unittest.TestCase):
             assets={"ig_user_id": "different"},
         )
         self.assertNotEqual(first, second)
+        other_period = snapshot_cache_key(
+            provider="meta",
+            api_version="v26.0",
+            period={"date_from": "2026-08-01", "date_to": "2026-08-31"},
+            assets={"ig_user_id": "ig"},
+        )
+        self.assertNotEqual(first, other_period)
         self.assertNotIn("not-written-to-snapshot", json.dumps(snapshot))
 
     def test_fresh_snapshot_is_reused_without_acquisition_and_writes_bundle(self):
@@ -413,35 +429,40 @@ class OwnedWorkflowTest(unittest.TestCase):
 
     def test_rate_limit_uses_valid_same_period_stale_snapshot(self):
         snapshot = make_snapshot(
-            _report(),
+            _report_for_period("2026-10-01", "2026-10-08"),
             api_version="v26.0",
             assets={"ig_user_id": "ig", "ad_account_id": "act"},
-            created_at="2026-09-01T00:00:00+00:00",
+            created_at="2026-10-01T00:00:00+00:00",
         )
         with TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "snapshot.json").write_text(json.dumps(snapshot), encoding="utf-8")
 
             def limited(*args):
-                raise MetaAPIError("rate limited", status=429, code=4)
+                raise MetaAPIError(
+                    "rate limited",
+                    status=429,
+                    code=4,
+                    category=ErrorCategory.RATE_LIMIT,
+                )
 
             result = run_owned_workflow(
                 self.config,
                 output_dir=root,
-                date_from="2026-09-01",
-                date_to="2026-09-30",
+                date_from="2026-10-01",
+                date_to="2026-10-08",
                 now=self.now,
                 acquire=limited,
             )
             self.assertEqual(result["snapshot_mode"], "snapshot_rate_limit_fallback")
             self.assertFalse(result["snapshot_status"]["fresh"])
 
-    def test_no_token_uses_matching_stale_snapshot_without_meta_request(self):
+    def test_completed_historical_snapshot_ignores_generic_ttl(self):
         snapshot = make_snapshot(
             _report(),
             api_version="v26.0",
             assets={"ig_user_id": "ig", "ad_account_id": "act"},
-            created_at="2026-09-01T00:00:00+00:00",
+            created_at="2026-10-01T00:00:00+00:00",
         )
         with TemporaryDirectory() as temp:
             root = Path(temp)
@@ -451,14 +472,76 @@ class OwnedWorkflowTest(unittest.TestCase):
                 self.fail("offline snapshot render must not call Meta")
 
             result = run_owned_workflow(
-                MetaConfig(access_token=""),
+                self.config,
                 output_dir=root,
                 date_from="2026-09-01",
                 date_to="2026-09-30",
                 now=self.now,
                 acquire=unexpected,
             )
-            self.assertEqual(result["snapshot_mode"], "snapshot_stale_offline")
+            self.assertEqual(result["snapshot_mode"], "snapshot_historical")
+
+    def test_stale_current_period_fetches_unless_explicitly_offline(self):
+        snapshot = make_snapshot(
+            _report_for_period("2026-10-01", "2026-10-08"),
+            api_version="v26.0",
+            assets={"ig_user_id": "ig", "ad_account_id": "act"},
+            created_at="2026-10-01T00:00:00+00:00",
+        )
+        calls = []
+
+        def acquire(config, start, end, budget):
+            calls.append((start, end))
+            return _report_for_period(start, end), {"ig_user_id": "ig", "ad_account_id": "act"}
+
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "snapshot.json").write_text(json.dumps(snapshot), encoding="utf-8")
+            result = run_owned_workflow(
+                self.config,
+                output_dir=root,
+                date_from="2026-10-01",
+                date_to="2026-10-08",
+                now=self.now,
+                acquire=acquire,
+            )
+        self.assertEqual(result["snapshot_mode"], "live")
+        self.assertEqual(calls, [("2026-10-01", "2026-10-08")])
+
+    def test_single_flight_coalesces_concurrent_same_period_refresh(self):
+        calls = []
+        started = threading.Event()
+
+        def acquire(config, start, end, budget):
+            calls.append((start, end))
+            started.set()
+            time.sleep(0.2)
+            return _report(), {"ig_user_id": "ig", "ad_account_id": "act"}
+
+        rendered = {"analysis": {}, "insights": {}, "pdf": {"status": "UNAVAILABLE"}}
+        with TemporaryDirectory() as temp, patch(
+            "social_report.owned_workflow.render_owned_outputs", return_value=rendered
+        ):
+            root = Path(temp)
+
+            def run():
+                return run_owned_workflow(
+                    self.config,
+                    output_dir=root,
+                    date_from="2026-09-01",
+                    date_to="2026-09-30",
+                    refresh=True,
+                    now=self.now,
+                    acquire=acquire,
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(run)
+                self.assertTrue(started.wait(1))
+                second = pool.submit(run)
+                modes = {first.result()["snapshot_mode"], second.result()["snapshot_mode"]}
+        self.assertEqual(calls, [("2026-09-01", "2026-09-30")])
+        self.assertEqual(modes, {"live", "snapshot_single_flight"})
 
     def test_no_snapshot_and_no_token_returns_stable_auth_error(self):
         with (

@@ -156,16 +156,19 @@ plugin tools. The committed DSL contains no model provider or secret binding. Fo
 ## Meta capabilities
 
 - Environment-driven User Token and System User Token consumption.
-- Optional official long-lived User Token exchange with explicit private save target.
+- Optional official long-lived User Token exchange with candidate validation and an explicit new
+  private save target; no unattended User Token renewal is claimed.
 - Optional `appsecret_proof` and token debug when app credentials are configured.
 - `/me`, Page, linked Instagram Professional, and Ad Account discovery with ambiguity rejection.
 - Instagram profile, cursor-paginated media, common Insights, and Reel watch time in milliseconds.
 - Period-first account/campaign/ad set/ad Insights, period-scoped creative metadata, raw actions,
   and cost-per-action maps without a full historical inventory scan.
-- Fresh snapshot reuse, compact deterministic analytics, evidence-bound narrative,
+- Stable completed-period snapshot reuse, local single-flight acquisition, compact deterministic
+  analytics, evidence-bound narrative,
   objective-aware paid analysis, and self-contained HTML/PDF with inline SVG charts and no remote
   assets.
-- Bounded GET retries, `Retry-After`, timeouts, structured errors, and paging URL redaction.
+- Opportunistic sanitized usage-header health, no rate-limit retry loop, bounded transient GET
+  retries, timeouts, structured errors, and paging URL redaction.
 - Read-only doctor and sanitized live smoke test; CI never requires production credentials.
 
 Facebook Page identity is required for discovery and creative identity. Facebook organic Post

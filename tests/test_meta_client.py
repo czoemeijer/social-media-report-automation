@@ -13,7 +13,13 @@ from social_report.sources.meta.auth import (
     MetaConfigurationError,
     load_env_file,
 )
-from social_report.sources.meta.client import HTTPResponse, MetaAPIError, MetaClient, redact_url
+from social_report.sources.meta.client import (
+    ErrorCategory,
+    HTTPResponse,
+    MetaAPIError,
+    MetaClient,
+    redact_url,
+)
 
 
 class QueueTransport:
@@ -86,11 +92,11 @@ class MetaClientTest(unittest.TestCase):
         self.assertIn("after=cursor-1", transport.urls[1])
         self.assertNotIn("leak", transport.urls[1])
 
-    def test_retry_after_and_5xx_are_bounded(self):
+    def test_server_transient_retry_is_bounded(self):
         sleeps = []
         transport = QueueTransport(
             [
-                response({"error": {"message": "slow", "code": 4}}, 429, {"Retry-After": "2"}),
+                response({"error": {"message": "temporary", "code": 2}}, 503),
                 response({"id": "ok"}),
             ]
         )
@@ -100,7 +106,34 @@ class MetaClientTest(unittest.TestCase):
             sleep=sleeps.append,
         )
         self.assertEqual(client.get("me")["id"], "ok")
-        self.assertEqual(sleeps, [2.0])
+        self.assertEqual(sleeps, [1.0])
+
+    def test_rate_limit_stops_immediately_and_preserves_wait_guidance(self):
+        transport = QueueTransport(
+            [
+                response(
+                    {"error": {"message": "slow", "code": 4}},
+                    429,
+                    {
+                        "Retry-After": "12",
+                        "X-Business-Use-Case-Usage": (
+                            '{"private-id":[{"type":"ads_insights","call_count":100,'
+                            '"estimated_time_to_regain_access":3}]}'
+                        ),
+                    },
+                )
+            ]
+        )
+        client = MetaClient(MetaConfig(access_token="secret", max_retries=3), transport=transport)
+        with self.assertRaises(MetaAPIError) as caught:
+            client.get("me")
+        self.assertEqual(len(transport.urls), 1)
+        self.assertEqual(caught.exception.category, ErrorCategory.RATE_LIMIT)
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(caught.exception.retry_after_seconds, 12)
+        self.assertEqual(caught.exception.estimated_regain_seconds, 180)
+        self.assertEqual(client.quota_summary["status"], "BLOCKED")
+        self.assertNotIn("private-id", json.dumps(client.quota_summary))
 
     def test_auth_error_is_not_retried_or_leaked(self):
         token = "sensitive-token-value"
@@ -113,6 +146,27 @@ class MetaClientTest(unittest.TestCase):
         self.assertEqual(len(transport.urls), 1)
         self.assertNotIn(token, str(caught.exception.as_dict()))
         self.assertEqual(caught.exception.code, 190)
+        self.assertEqual(caught.exception.category, ErrorCategory.AUTH)
+
+    def test_nonretryable_error_categories_are_deterministic(self):
+        cases = (
+            (403, 10, ErrorCategory.PERMISSION),
+            (401, 999, ErrorCategory.AUTH),
+            (400, 100, ErrorCategory.INVALID_REQUEST),
+            (418, 999, ErrorCategory.OTHER),
+        )
+        for status, code, expected in cases:
+            with self.subTest(code=code):
+                transport = QueueTransport(
+                    [response({"error": {"message": "rejected", "code": code}}, status)]
+                )
+                client = MetaClient(
+                    MetaConfig(access_token="secret", max_retries=3), transport=transport
+                )
+                with self.assertRaises(MetaAPIError) as caught:
+                    client.get("me")
+                self.assertEqual(caught.exception.category, expected)
+                self.assertEqual(len(transport.urls), 1)
 
     def test_query_encoding_and_user_agent(self):
         transport = QueueTransport([response({"data": []})])

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -18,11 +21,16 @@ REQUIRED_REPORTING_SCOPES = (
 )
 
 
-def debug_token(config: MetaConfig, *, transport: Optional[Transport] = None) -> Mapping[str, Any]:
+def debug_token(
+    config: MetaConfig,
+    *,
+    transport: Optional[Transport] = None,
+    client: Optional[MetaClient] = None,
+) -> Mapping[str, Any]:
     if not config.app_id or not config.app_secret:
         raise MetaConfigurationError("META_APP_ID and META_APP_SECRET are required for token debug")
-    client = MetaClient(config, transport=transport)
-    payload = client.get_without_auth(
+    api = client or MetaClient(config, transport=transport)
+    payload = api.get_without_auth(
         "debug_token",
         {
             "input_token": config.access_token,
@@ -119,7 +127,7 @@ def exchange_user_token(
     save_to: Path,
     transport: Optional[Transport] = None,
 ) -> Mapping[str, object]:
-    """Exchange and save a long-lived User Token without printing it."""
+    """Exchange, validate, and atomically save a long-lived User Token."""
 
     if config.auth_mode != "user_token":
         raise MetaConfigurationError("Token exchange applies only to user_token mode")
@@ -140,12 +148,47 @@ def exchange_user_token(
     token = payload.get("access_token")
     if not isinstance(token, str) or not token:
         raise MetaConfigurationError("Meta did not return a long-lived token")
+
+    candidate = replace(config, access_token=token)
+    candidate_debug = debug_token(candidate, transport=transport)
+    lifecycle = token_lifecycle_status(candidate_debug)
+    if candidate_debug.get("is_valid") is not True:
+        raise MetaConfigurationError("Refusing to save an invalid exchanged token")
+    if str(candidate_debug.get("app_id") or "") != config.app_id:
+        raise MetaConfigurationError("Refusing to save a token issued for a different app")
+    if lifecycle["missing_scopes"]:
+        raise MetaConfigurationError("Refusing to save an exchanged token missing required scopes")
+
     save_to.parent.mkdir(parents=True, exist_ok=True)
-    save_to.write_text(token + "\n", encoding="utf-8")
-    save_to.chmod(0o600)
+    temporary: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=save_to.parent,
+            prefix=f".{save_to.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            os.chmod(handle.name, 0o600)
+            handle.write(token + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, save_to)
+        except FileExistsError as exc:
+            raise MetaConfigurationError("Refusing to overwrite an existing token target") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     expires_in = payload.get("expires_in")
     return {
         "status": "saved",
         "path": str(save_to),
         "expires_in": expires_in if isinstance(expires_in, int) else None,
+        "validation": {
+            "is_valid": True,
+            "app_id_matches": True,
+            "missing_scopes": [],
+        },
     }

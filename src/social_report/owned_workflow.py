@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, Mapping, Optional, Tuple
+from typing import Callable, Dict, Iterator, Mapping, Optional, Tuple
 
 from .budget import decimal_to_string, load_budget, reconcile_budget
 from .owned_analytics import analyze_owned_media
@@ -16,7 +19,7 @@ from .owned_presentation import default_insights, validate_insights
 from .owned_reporting import export_owned_csv, export_owned_json, export_owned_markdown
 from .sources.meta.ads import collect_ads
 from .sources.meta.auth import MetaConfig
-from .sources.meta.client import MetaAPIError, MetaClient
+from .sources.meta.client import ErrorCategory, MetaAPIError, MetaClient
 from .sources.meta.discovery import AssetResolutionError, discover_assets, resolve_assets
 from .sources.meta.instagram import collect_instagram, resolve_creative_media_references
 from .sources.meta.mapper import build_owned_media_report
@@ -145,7 +148,63 @@ def snapshot_status(
     max_age = freshness.get("max_age_hours", 36) if isinstance(freshness, dict) else 36
     current = now or datetime.now(timezone.utc)
     fresh = bool(created_at and current - created_at <= timedelta(hours=int(max_age)))
-    return {"valid": True, "fresh": fresh, "reason": "fresh" if fresh else "stale"}
+    period_end = date.fromisoformat(date_to)
+    historical_complete = bool(
+        created_at and period_end < current.date() and created_at.date() > period_end
+    )
+    return {
+        "valid": True,
+        "fresh": fresh,
+        "historical_complete": historical_complete,
+        "reason": "fresh" if fresh else "stale",
+    }
+
+
+def _acquisition_lock_key(config: MetaConfig, date_from: str, date_to: str) -> str:
+    return snapshot_cache_key(
+        provider="meta",
+        api_version=config.graph_version,
+        period={"date_from": date_from, "date_to": date_to},
+        assets={
+            "page_id": config.page_id,
+            "ig_user_id": config.ig_user_id,
+            "ad_account_id": config.ad_account_id,
+        },
+    )
+
+
+@contextmanager
+def _single_flight(
+    path: Path,
+    *,
+    wait_seconds: float = 60.0,
+    stale_seconds: float = 300.0,
+) -> Iterator[bool]:
+    """Serialize identical local acquisitions; yield whether another caller finished first."""
+
+    deadline = time.monotonic() + wait_seconds
+    waited = False
+    while True:
+        try:
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(f"pid={os.getpid()}\n")
+            break
+        except FileExistsError:
+            waited = True
+            try:
+                if time.time() - path.stat().st_mtime > stale_seconds:
+                    path.unlink()
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError("SNAPSHOT_ACQUISITION_IN_PROGRESS") from None
+            time.sleep(0.05)
+    try:
+        yield waited
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _snapshot_matches_config(snapshot: Mapping[str, object], config: MetaConfig) -> bool:
@@ -332,47 +391,67 @@ def run_owned_workflow(
         status = {"valid": False, "fresh": False, "reason": "asset identity mismatch"}
     mode = "snapshot"
     may_use_stale = offline or not config.access_token
+    historical_complete = bool(status.get("historical_complete"))
     snapshot = (
         candidate
-        if candidate and status["valid"] and (status["fresh"] or may_use_stale) and not refresh
+        if candidate
+        and status["valid"]
+        and (status["fresh"] or may_use_stale or historical_complete)
+        and not refresh
         else None
     )
     if snapshot is not None and not status["fresh"]:
-        mode = "snapshot_stale_offline"
+        mode = "snapshot_historical" if historical_complete else "snapshot_stale_offline"
     if snapshot is None:
         if not config.access_token:
             raise ValueError("AUTH_REQUIRED_FOR_FRESH_FETCH")
-        try:
-            if acquire:
-                report, assets = acquire(config, start, end, budget)
-            else:
-                report, assets = acquire_owned_report(
-                    config, date_from=start, date_to=end, budget=budget
+        lock_path = output_dir / f".snapshot-{_acquisition_lock_key(config, start, end)}.lock"
+        with _single_flight(lock_path) as waited:
+            if waited and snapshot_path.exists():
+                completed = _read_snapshot(snapshot_path)
+                completed_status = snapshot_status(
+                    completed,
+                    date_from=start,
+                    date_to=end,
+                    api_version=config.graph_version,
+                    now=now,
                 )
-            snapshot = make_snapshot(
-                report,
-                api_version=config.graph_version,
-                assets=assets,
-                max_age_hours=max_age_hours,
-            )
-            _write_json(snapshot_path, snapshot)
-            mode = "live"
-            status = snapshot_status(
-                snapshot,
-                date_from=start,
-                date_to=end,
-                api_version=config.graph_version,
-                now=now,
-            )
-        except MetaAPIError as exc:
-            if (
-                not candidate
-                or not status["valid"]
-                or not (exc.status == 429 or exc.code in {4, 17, 32, 613})
-            ):
-                raise
-            snapshot = candidate
-            mode = "snapshot_rate_limit_fallback"
+                if completed_status["valid"] and _snapshot_matches_config(completed, config):
+                    snapshot = completed
+                    status = completed_status
+                    mode = "snapshot_single_flight"
+            if snapshot is None:
+                try:
+                    if acquire:
+                        report, assets = acquire(config, start, end, budget)
+                    else:
+                        report, assets = acquire_owned_report(
+                            config, date_from=start, date_to=end, budget=budget
+                        )
+                    snapshot = make_snapshot(
+                        report,
+                        api_version=config.graph_version,
+                        assets=assets,
+                        max_age_hours=max_age_hours,
+                    )
+                    _write_json(snapshot_path, snapshot)
+                    mode = "live"
+                    status = snapshot_status(
+                        snapshot,
+                        date_from=start,
+                        date_to=end,
+                        api_version=config.graph_version,
+                        now=now,
+                    )
+                except MetaAPIError as exc:
+                    if (
+                        not candidate
+                        or not status["valid"]
+                        or exc.category is not ErrorCategory.RATE_LIMIT
+                    ):
+                        raise
+                    snapshot = candidate
+                    mode = "snapshot_rate_limit_fallback"
     if candidate_path != snapshot_path:
         _write_json(snapshot_path, snapshot)
     rendered = render_owned_outputs(

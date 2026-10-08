@@ -5,9 +5,11 @@ Accounts. Instagram media and Insights are organic. Marketing API Insights are p
 keeps those domains separate because their audience overlap is unknown.
 
 The reporting workflow requests period-bounded Ads Insights first, then batch-reads metadata and
-creatives only for campaign, ad set, and ad IDs present in those Insights. `snapshot.json` is a
+creatives only for campaign and ad IDs present in those Insights; ad set metadata is already carried
+by period-scoped ad set Insights. `snapshot.json` is a
 private, credential-free cache envelope keyed by provider, selected assets, API version, and exact
-period. A fresh same-period snapshot prevents duplicate API acquisition; `--refresh` bypasses it.
+period. A completed historical same-period snapshot prevents duplicate API acquisition regardless
+of the generic TTL; current/partial periods require freshness. `--refresh` bypasses reuse.
 `analysis.json` is the compact Skill context. The validated `insights.json` records narrative claims
 and their evidence references. `report.pdf` is the primary human artifact; the self-contained HTML
 is its deterministic source and remains available for audit.

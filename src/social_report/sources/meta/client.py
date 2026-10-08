@@ -8,9 +8,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Dict, Iterator, Mapping, MutableMapping, Optional, Protocol, cast
 
 from .auth import MetaConfig
+from .usage import UsageTracker
 
 SENSITIVE_QUERY_KEYS = {
     "access_token",
@@ -30,6 +32,35 @@ class HTTPResponse:
 
 class Transport(Protocol):
     def __call__(self, url: str, timeout: float, user_agent: str) -> HTTPResponse: ...
+
+
+class ErrorCategory(str, Enum):
+    TRANSPORT = "TRANSPORT"
+    SERVER_TRANSIENT = "SERVER_TRANSIENT"
+    RATE_LIMIT = "RATE_LIMIT"
+    AUTH = "AUTH"
+    PERMISSION = "PERMISSION"
+    INVALID_REQUEST = "INVALID_REQUEST"
+    OTHER = "OTHER"
+
+
+RATE_LIMIT_CODES = {
+    4,
+    17,
+    32,
+    341,
+    613,
+    80000,
+    80001,
+    80002,
+    80003,
+    80004,
+    80005,
+    80006,
+    80008,
+    80009,
+    80014,
+}
 
 
 def redact_url(url: str) -> str:
@@ -66,6 +97,9 @@ class MetaAPIError(RuntimeError):
         subcode: Optional[int] = None,
         error_type: Optional[str] = None,
         retryable: bool = False,
+        category: ErrorCategory = ErrorCategory.OTHER,
+        retry_after_seconds: Optional[float] = None,
+        estimated_regain_seconds: Optional[int] = None,
         request_url: Optional[str] = None,
     ) -> None:
         super().__init__(message)
@@ -74,6 +108,9 @@ class MetaAPIError(RuntimeError):
         self.subcode = subcode
         self.error_type = error_type
         self.retryable = retryable
+        self.category = category
+        self.retry_after_seconds = retry_after_seconds
+        self.estimated_regain_seconds = estimated_regain_seconds
         self.request_url = redact_url(request_url) if request_url else None
 
     def as_dict(self) -> Mapping[str, object]:
@@ -84,6 +121,9 @@ class MetaAPIError(RuntimeError):
             "subcode": self.subcode,
             "type": self.error_type,
             "retryable": self.retryable,
+            "category": self.category.value,
+            "retry_after_seconds": self.retry_after_seconds,
+            "estimated_regain_seconds": self.estimated_regain_seconds,
             "request_url": self.request_url,
         }
 
@@ -104,7 +144,12 @@ def _urllib_transport(url: str, timeout: float, user_agent: str) -> HTTPResponse
             body=exc.read(),
         )
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise MetaAPIError("Meta API transport failed", retryable=True, request_url=url) from exc
+        raise MetaAPIError(
+            "Meta API transport failed",
+            retryable=True,
+            category=ErrorCategory.TRANSPORT,
+            request_url=url,
+        ) from exc
 
 
 def _clean_payload(value: Any) -> Any:
@@ -138,6 +183,11 @@ class MetaClient:
         self.sleep = sleep
         self.base_url = base_url.rstrip("/")
         self.user_agent = "social-media-report-automation/2.0 (+read-only-meta-adapter)"
+        self.usage = UsageTracker()
+
+    @property
+    def quota_summary(self) -> Mapping[str, object]:
+        return self.usage.summary()
 
     def _url(
         self,
@@ -178,6 +228,31 @@ class MetaClient:
         except ValueError:
             return min(2.0**attempt, 30.0)
 
+    @staticmethod
+    def _retry_after(response: HTTPResponse) -> Optional[float]:
+        raw = next(
+            (value for key, value in response.headers.items() if key.lower() == "retry-after"),
+            None,
+        )
+        try:
+            return max(float(raw), 0.0) if raw is not None else None
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _category(status: int, code: Optional[int]) -> ErrorCategory:
+        if status == 429 or code in RATE_LIMIT_CODES:
+            return ErrorCategory.RATE_LIMIT
+        if status >= 500 or code in {1, 2}:
+            return ErrorCategory.SERVER_TRANSIENT
+        if status == 401 or code in {102, 190}:
+            return ErrorCategory.AUTH
+        if status == 403 or code in {3, 10, 368} or (code is not None and 200 <= code <= 299):
+            return ErrorCategory.PERMISSION
+        if code == 100 or status in {400, 404, 405, 422}:
+            return ErrorCategory.INVALID_REQUEST
+        return ErrorCategory.OTHER
+
     def _error(self, response: HTTPResponse, url: str) -> MetaAPIError:
         error: Mapping[str, object] = {}
         try:
@@ -193,16 +268,21 @@ class MetaClient:
         )
         code = error.get("code")
         subcode = error.get("error_subcode")
-        retryable = (
-            response.status == 429 or response.status >= 500 or code in {1, 2, 4, 17, 32, 613}
-        )
+        parsed_code = code if isinstance(code, int) else None
+        category = self._category(response.status, parsed_code)
+        retryable = category is ErrorCategory.SERVER_TRANSIENT
+        quota = self.quota_summary
+        regain = quota.get("estimated_regain_seconds")
         return MetaAPIError(
             safe_message,
             status=response.status,
-            code=code if isinstance(code, int) else None,
+            code=parsed_code,
             subcode=subcode if isinstance(subcode, int) else None,
             error_type=str(error.get("type")) if error.get("type") else None,
             retryable=retryable,
+            category=category,
+            retry_after_seconds=self._retry_after(response),
+            estimated_regain_seconds=regain if isinstance(regain, int) else None,
             request_url=url,
         )
 
@@ -217,6 +297,7 @@ class MetaClient:
                     raise
                 self.sleep(min(2.0**attempt, 30.0))
                 continue
+            self.usage.observe(response.headers)
             if 200 <= response.status < 300:
                 try:
                     payload = json.loads(response.body.decode("utf-8"))
@@ -234,6 +315,8 @@ class MetaClient:
                     )
                 return cast(Mapping[str, Any], _clean_payload(payload))
             error = self._error(response, url)
+            if error.category is ErrorCategory.RATE_LIMIT:
+                self.usage.mark_blocked()
             if attempt >= self.config.max_retries or not error.retryable:
                 raise error
             self.sleep(self._retry_delay(response, attempt))
