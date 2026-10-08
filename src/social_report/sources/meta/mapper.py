@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Mapping
+from typing import Dict, List, Mapping, Optional
 
 from .matching import match_paid_to_organic
 from .models import provenance, utc_now
@@ -13,6 +13,8 @@ def build_owned_media_report(
     instagram: Mapping[str, object],
     ads: Mapping[str, object],
     api_version: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> Dict[str, object]:
     raw_media = instagram.get("media", [])
     media = (
@@ -94,6 +96,7 @@ def build_owned_media_report(
         "report_type": "owned_media",
         "api_version": api_version,
         "retrieved_at": utc_now(),
+        "report_period": {"date_from": date_from, "date_to": date_to},
         "instagram_profile": instagram.get("profile"),
         "ad_account": ads.get("account"),
         "content": contents,

@@ -291,7 +291,11 @@ def run_meta(args: argparse.Namespace) -> int:
             creative_rows,
         )
     report = build_owned_media_report(
-        instagram=instagram, ads=ads, api_version=config.graph_version
+        instagram=instagram,
+        ads=ads,
+        api_version=config.graph_version,
+        date_from=args.date_from,
+        date_to=args.date_to,
     )
     if args.budget:
         report["budget_reconciliation"] = reconcile_budget(

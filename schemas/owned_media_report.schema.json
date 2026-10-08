@@ -77,6 +77,30 @@
     "provenance": {
       "type": "object"
     },
+    "report_period": {
+      "additionalProperties": false,
+      "properties": {
+        "date_from": {
+          "format": "date",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "date_to": {
+          "format": "date",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "date_from",
+        "date_to"
+      ],
+      "type": "object"
+    },
     "report_type": {
       "const": "owned_media"
     },
@@ -94,6 +118,7 @@
     "report_type",
     "api_version",
     "retrieved_at",
+    "report_period",
     "content",
     "paid_organic_matches",
     "provenance",

@@ -172,6 +172,7 @@ OWNED_MEDIA_REPORT_SCHEMA: Dict[str, Any] = {
         "report_type",
         "api_version",
         "retrieved_at",
+        "report_period",
         "content",
         "paid_organic_matches",
         "provenance",
@@ -181,6 +182,15 @@ OWNED_MEDIA_REPORT_SCHEMA: Dict[str, Any] = {
         "report_type": {"const": "owned_media"},
         "api_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+$"},
         "retrieved_at": {"type": "string"},
+        "report_period": {
+            "type": "object",
+            "required": ["date_from", "date_to"],
+            "additionalProperties": False,
+            "properties": {
+                "date_from": {"type": ["string", "null"], "format": "date"},
+                "date_to": {"type": ["string", "null"], "format": "date"},
+            },
+        },
         "instagram_profile": {"type": ["object", "null"]},
         "ad_account": {"type": ["object", "null"]},
         "content": {
