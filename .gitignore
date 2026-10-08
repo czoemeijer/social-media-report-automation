@@ -52,6 +52,7 @@ REPORT_*.md
 !.env.example
 *.pem
 *.key
+*.secret
 .streamlit/secrets.toml
 
 # Python cache & test artifacts

@@ -1,0 +1,104 @@
+{
+  "$id": "https://social-report.local/schemas/owned_media_report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "ad_account": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "ads": {
+      "type": "object"
+    },
+    "api_version": {
+      "pattern": "^v[0-9]+\\.[0-9]+$",
+      "type": "string"
+    },
+    "budget_reconciliation": {
+      "type": "object"
+    },
+    "content": {
+      "items": {
+        "properties": {
+          "identity": {
+            "type": "object"
+          },
+          "organic": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "paid": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "paid_match": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "organic",
+              "paid",
+              "mixed_or_unknown",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "organic",
+          "paid",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "instagram_profile": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "paid_organic_matches": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "report_type": {
+      "const": "owned_media"
+    },
+    "retrieved_at": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "report_type",
+    "api_version",
+    "retrieved_at",
+    "content",
+    "paid_organic_matches",
+    "provenance",
+    "warnings"
+  ],
+  "title": "Authorized owned-media and paid-media report",
+  "type": "object"
+}

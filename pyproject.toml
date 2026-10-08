@@ -18,6 +18,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
+[project.scripts]
+social-report = "social_report.cli:main"
+
 [project.optional-dependencies]
 images = ["Pillow>=10.3,<13"]
 dev = [
