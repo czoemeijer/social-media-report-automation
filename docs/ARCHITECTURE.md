@@ -17,6 +17,19 @@ the same source-to-canonical boundary without changing current creator evidence 
 `src/social_report` is the only maintained source of business rules. Agent Skill scripts import it.
 The Dify plugin build stages that package into `.difypkg`; it does not maintain a second code copy.
 
+The owned-media Agent Skill is the primary product surface. Its `report` entry point resolves one
+completed reporting period, reuses or acquires one credential-free private snapshot, builds one
+compact `analysis.json`, validates evidence-bound narrative, and renders JSON/CSV/Markdown/HTML/PDF
+from that same snapshot. Dify is the
+secondary guided WebApp surface. The CLI remains a low-level operator interface and calls the same
+workflow rather than maintaining parallel report logic.
+
+For Meta Ads, the source adapter requests bounded Insights before metadata. Campaign, ad set, and
+ad identifiers found in the selected period are then batch-read directly; normal reporting never
+enumerates the full historical account inventory. Snapshot identity includes provider, selected
+assets, API version, and exact period. Freshness is explicit, `--refresh` is opt-in, and a stale
+same-period snapshot is accepted only as a reported fallback after a rate-limit failure.
+
 Dify performs AI work:
 
 1. global low-detail campaign reconstruction;
@@ -40,6 +53,7 @@ The plugin performs deterministic work:
 - No Streamlit: duplicate UI and simulated metrics were removed.
 - No mandatory n8n: external event automation is optional and points into Dify.
 - No mandatory OCR: it remains an optional future adapter only if measured evaluation justifies it.
+- No browser chart runtime or CDN: owned-media HTML uses deterministic inline CSS and SVG.
 
 ## Evidence hierarchy
 

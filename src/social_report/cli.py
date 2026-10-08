@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
 from .budget import decimal_to_string, load_budget, reconcile_budget
 from .owned_reporting import export_owned_csv, export_owned_json, export_owned_markdown
+from .owned_workflow import run_owned_workflow
 from .sources.meta.ads import collect_ads
 from .sources.meta.auth import MetaConfig, load_env_file
 from .sources.meta.client import MetaAPIError, MetaClient
@@ -28,6 +30,35 @@ from .sources.meta.tokens import debug_token, exchange_user_token, token_lifecyc
 def _config() -> MetaConfig:
     load_env_file(Path(".env.local"))
     return MetaConfig.from_env()
+
+
+def _report_config(args: argparse.Namespace) -> MetaConfig:
+    snapshot_path = (
+        Path(args.snapshot_input)
+        if args.snapshot_input
+        else Path(args.output_dir) / "snapshot.json"
+    )
+    if snapshot_path.exists() and not args.refresh:
+        try:
+            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            metadata = snapshot.get("metadata") if isinstance(snapshot, dict) else None
+            version = metadata.get("api_version") if isinstance(metadata, dict) else "v26.0"
+        except (OSError, json.JSONDecodeError):
+            version = "v26.0"
+        return MetaConfig(access_token="", graph_version=str(version or "v26.0"))
+    load_env_file(Path(".env.local"))
+    if os.environ.get("META_ACCESS_TOKEN", "").strip():
+        return MetaConfig.from_env()
+    version = os.environ.get("META_GRAPH_VERSION", "v26.0").strip()
+    if not version.startswith("v") or "." not in version:
+        raise ValueError("META_GRAPH_VERSION must look like v26.0")
+    return MetaConfig(
+        access_token="",
+        graph_version=version,
+        page_id=os.environ.get("META_PAGE_ID") or None,
+        ig_user_id=os.environ.get("META_IG_USER_ID") or None,
+        ad_account_id=os.environ.get("META_AD_ACCOUNT_ID") or None,
+    )
 
 
 def _json(payload: object) -> str:
@@ -256,13 +287,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--breakdowns", help="Optional comma-separated Marketing API breakdowns"
         )
         _add_selectors(command)
+    report = commands.add_parser("report", help="Generate a complete snapshot-backed report bundle")
+    report.add_argument("--from", dest="date_from")
+    report.add_argument("--to", dest="date_to")
+    report.add_argument("--output-dir", required=True)
+    report.add_argument("--language", choices=("en", "cs", "zh"), default="en")
+    report.add_argument("--refresh", action="store_true")
+    report.add_argument("--offline", action="store_true")
+    report.add_argument("--budget")
+    report.add_argument("--snapshot-input")
+    report.add_argument("--insights")
+    report.add_argument("--max-age-hours", type=int, default=36)
+    _add_selectors(report)
     exchange = commands.add_parser("exchange-user-token")
     exchange.add_argument("--save-to", required=True)
     return parser
 
 
 def run_meta(args: argparse.Namespace) -> int:
-    config = _override_selectors(_config(), args)
+    base_config = _report_config(args) if args.command == "report" else _config()
+    config = _override_selectors(base_config, args)
     client = MetaClient(config)
     if args.command == "doctor":
         result = doctor(client, config)
@@ -273,6 +317,25 @@ def run_meta(args: argparse.Namespace) -> int:
         return 0
     if args.command == "exchange-user-token":
         _emit(exchange_user_token(config, save_to=Path(args.save_to)), as_json=True)
+        return 0
+    if args.command == "report":
+        result = dict(
+            run_owned_workflow(
+                config,
+                output_dir=Path(args.output_dir),
+                date_from=args.date_from,
+                date_to=args.date_to,
+                language=args.language,
+                refresh=args.refresh,
+                offline=args.offline,
+                budget=Path(args.budget) if args.budget else None,
+                snapshot_input=Path(args.snapshot_input) if args.snapshot_input else None,
+                insights_input=Path(args.insights) if args.insights else None,
+                max_age_hours=args.max_age_hours,
+            )
+        )
+        result.pop("analysis", None)
+        _emit(result, as_json=True)
         return 0
     selected = _resolved(
         client,

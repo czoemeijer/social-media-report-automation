@@ -97,6 +97,8 @@ def build_owned_media_report(
                     "timestamp": item.get("timestamp"),
                     "media_type": item.get("media_type"),
                     "media_product_type": item.get("media_product_type"),
+                    "caption": item.get("caption"),
+                    "title": item.get("title"),
                     "reference_only": bool(item.get("reference_only", False)),
                     "authorized_owned": bool(item.get("authorized_owned", True)),
                 },

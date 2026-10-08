@@ -37,7 +37,8 @@ identity, money, and formulas before anything becomes a report.
 - Reads authorized Instagram Professional and Meta Ad Account data through a generic v26.0 adapter.
 - Matches paid creatives to organic content using exact source IDs or normalized permalinks.
 - Reconciles planned CSV/TSV media budgets against one non-duplicated Ads Insights level.
-- Exports auditable JSON, spreadsheet-safe CSV, and deterministic Markdown.
+- Reuses a private period snapshot and exports compact analytics, spreadsheet-safe CSV,
+  deterministic Markdown, self-contained HTML, and a professional PDF report.
 
 ## Three portable Agent Skills
 
@@ -78,8 +79,9 @@ flowchart LR
     H --> K["JSON / CSV / Markdown"]
 ```
 
-`src/social_report` is the single source of truth. Skills, the project-owned Dify plugin, workflow
-DSL, and CLI are thin interfaces. There is no separate API service, queue, database, or OAuth portal.
+`src/social_report` is the single source of truth. Portable Agent Skills are the primary product
+surface; the Dify WebApp is secondary; the CLI is a low-level developer/operator interface. All
+three reuse the same core. There is no separate API service, queue, database, or OAuth portal.
 
 ## The six golden audit rules
 
@@ -94,7 +96,17 @@ DSL, and CLI are thin interfaces. There is no separate API service, queue, datab
 
 ## Quickstart
 
-Install the minimal project and run its complete local gate:
+Install the project, configure ignored `.env.local`, then ask an Agent using the
+`owned-media-report` Skill:
+
+> Generate last month's owned-media report, create the PDF, and explain what matters.
+
+The Agent checks for a reusable same-period snapshot before requesting authorization, performs one
+acquisition only when needed, computes deterministic analytics, writes evidence-bound narrative,
+renders and inspects the report, then returns `report.pdf` as the primary deliverable. HTML,
+`analysis.json`, and Markdown support audit and fallback use.
+
+For repository development, run the local gate:
 
 ```bash
 uv sync --extra dev
@@ -103,7 +115,7 @@ uv run ruff check src tests scripts evals plugins skills
 uv run mypy
 ```
 
-### Authorized Meta API
+### Low-level authorized Meta API
 
 ```bash
 cp .env.example .env.local
@@ -112,8 +124,8 @@ chmod 600 .env.local
 
 uv run social-report meta discover --json
 uv run social-report meta doctor
-uv run social-report meta pull --from 2026-01-01 --to 2026-01-31 \
-  --budget path/to/media-plan.tsv --format json --output owned-report.json
+uv run social-report meta report --from 2026-01-01 --to 2026-01-31 \
+  --budget path/to/media-plan.tsv --output-dir private/reports/2026-01
 ```
 
 With one compatible Page/Instagram/Ad Account relationship, selectors can resolve automatically.
@@ -148,7 +160,11 @@ plugin tools. The committed DSL contains no model provider or secret binding. Fo
 - Optional `appsecret_proof` and token debug when app credentials are configured.
 - `/me`, Page, linked Instagram Professional, and Ad Account discovery with ambiguity rejection.
 - Instagram profile, cursor-paginated media, common Insights, and Reel watch time in milliseconds.
-- Account/campaign/ad set/ad Insights, creatives, raw actions, and cost-per-action maps.
+- Period-first account/campaign/ad set/ad Insights, period-scoped creative metadata, raw actions,
+  and cost-per-action maps without a full historical inventory scan.
+- Fresh snapshot reuse, compact deterministic analytics, evidence-bound narrative,
+  objective-aware paid analysis, and self-contained HTML/PDF with inline SVG charts and no remote
+  assets.
 - Bounded GET retries, `Retry-After`, timeouts, structured errors, and paging URL redaction.
 - Read-only doctor and sanitized live smoke test; CI never requires production credentials.
 

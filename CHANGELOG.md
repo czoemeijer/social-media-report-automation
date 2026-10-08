@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV/TSV media-budget parsing and Decimal-based plan-versus-actual reconciliation at one selected
   Ads Insights level.
 - `social-report meta` CLI, sanitized live smoke test, and third portable `owned-media-report` Skill.
+- Agent-first owned-media `report` workflow with explicit previous-month defaults, one-fetch private
+  snapshot reuse, refresh/rate-limit fallback semantics, and compact `analysis.json`.
+- Period-first Ads collection that batch-reads metadata only for campaign, ad set, and ad IDs with
+  Insights in the selected period.
+- Deterministic organic ratios and format/Reels summaries, distinct paid action metrics,
+  objective-aware campaign efficiency, and period-scoped Paid-to-Organic match statistics.
+- Standalone responsive/printable HTML report and first-class PDF with inline CSS/SVG charts,
+  evidence-bound narrative, HTML escaping, and English, Czech, and Chinese report labels.
 - Generated canonical `owned_media_report` JSON Schema.
 - Project-owned Dify plugin with safe intake, ZIP normalization, per-asset file selection,
   extraction validation, deterministic audit, and JSON/CSV/Markdown export tools.
@@ -30,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - README presentation now follows the stronger historical project style while documenting the
   current Dify, Agent Skill, creator-evidence, and owned-media API architecture.
-- Agent Skill scripts are thin wrappers over the shared core.
+- Agent Skill scripts expose high-level workflows over the shared core; low-level CLI commands remain
+  available for developers and operators.
 - Missing scope now defaults to `unknown`, never `organic`.
 - Paid, organic, mixed-or-unknown, and unknown metrics are aggregated separately.
 

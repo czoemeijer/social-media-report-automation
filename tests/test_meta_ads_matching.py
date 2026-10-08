@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from social_report.sources.meta.ads import get_insights, normalize_ad_account_id
+from social_report.sources.meta.ads import collect_ads, get_insights, normalize_ad_account_id
 from social_report.sources.meta.auth import MetaConfig
 from social_report.sources.meta.mapper import build_owned_media_report
 from social_report.sources.meta.matching import match_paid_to_organic, normalize_permalink
@@ -21,6 +21,14 @@ class FakeAdsClient:
             "cost_per_action_type": [{"action_type": "link_click", "value": "2.46"}],
         }
 
+    def get(self, path, params=None):
+        if path.startswith("act_"):
+            return {"id": path, "currency": "EUR"}
+        ids = str(params["ids"]).split(",")
+        if "creative{" in str(params["fields"]):
+            return {item: {"id": item, "creative": {"id": f"creative-{item}"}} for item in ids}
+        return {item: {"id": item} for item in ids}
+
 
 class AdsAndMatchingTest(unittest.TestCase):
     def test_account_id_and_four_insight_levels(self):
@@ -32,6 +40,18 @@ class AdsAndMatchingTest(unittest.TestCase):
             self.assertEqual(row["actions_normalized"]["link_click"], 5)
             self.assertEqual(row["cost_per_action_normalized"]["link_click"], "2.46")
             self.assertEqual(row["scope"], "paid")
+
+    def test_collect_ads_reads_period_insights_before_only_period_objects(self):
+        client = FakeAdsClient()
+        result = collect_ads(client, "1", date_from="2026-09-01", date_to="2026-09-30")
+        self.assertEqual(result["collection"]["scope"], "report_period")
+        self.assertEqual(result["collection"]["campaigns_in_period"], 1)
+        self.assertEqual(result["collection"]["adsets_in_period"], 1)
+        self.assertEqual(result["collection"]["ads_in_period"], 1)
+        self.assertEqual(len(result["campaigns"]), 1)
+        self.assertEqual(len(result["adsets"]), 1)
+        self.assertEqual(len(result["ads"]), 1)
+        self.assertEqual(len(result["creatives"]), 1)
 
     def test_source_media_id_has_priority_over_permalink(self):
         organic = [

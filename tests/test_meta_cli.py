@@ -25,6 +25,9 @@ class MetaCliTest(unittest.TestCase):
         for command in ("doctor", "discover", "pull", "pull-instagram", "pull-ads"):
             args = parser.parse_args(["meta", command])
             self.assertEqual(args.command, command)
+        report = parser.parse_args(["meta", "report", "--output-dir", "private/report"])
+        self.assertEqual(report.command, "report")
+        self.assertEqual(report.language, "en")
 
     def test_exchange_requires_explicit_new_target_and_never_returns_token(self):
         config = MetaConfig(
