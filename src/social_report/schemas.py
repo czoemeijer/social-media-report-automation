@@ -163,9 +163,52 @@ AUDIT_RESULT_SCHEMA: Dict[str, Any] = {
     },
 }
 
+OWNED_MEDIA_REPORT_SCHEMA: Dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://social-report.local/schemas/owned_media_report.schema.json",
+    "title": "Authorized owned-media and paid-media report",
+    "type": "object",
+    "required": [
+        "report_type",
+        "api_version",
+        "retrieved_at",
+        "content",
+        "paid_organic_matches",
+        "provenance",
+        "warnings",
+    ],
+    "properties": {
+        "report_type": {"const": "owned_media"},
+        "api_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+$"},
+        "retrieved_at": {"type": "string"},
+        "instagram_profile": {"type": ["object", "null"]},
+        "ad_account": {"type": ["object", "null"]},
+        "content": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["identity", "organic", "paid", "scope"],
+                "properties": {
+                    "identity": {"type": "object"},
+                    "organic": {"type": ["object", "null"]},
+                    "paid": {"type": ["object", "null"]},
+                    "paid_match": {"type": ["object", "null"]},
+                    "scope": {"type": "string", "enum": SCOPES},
+                },
+            },
+        },
+        "ads": {"type": "object"},
+        "paid_organic_matches": {"type": "array", "items": {"type": "object"}},
+        "budget_reconciliation": {"type": "object"},
+        "provenance": {"type": "object"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
 SCHEMAS = {
     "input_manifest.schema.json": INPUT_MANIFEST_SCHEMA,
     "campaign_reconstruction.schema.json": CAMPAIGN_RECONSTRUCTION_SCHEMA,
     "extracted_asset.schema.json": EXTRACTED_ASSET_SCHEMA,
     "audit_result.schema.json": AUDIT_RESULT_SCHEMA,
+    "owned_media_report.schema.json": OWNED_MEDIA_REPORT_SCHEMA,
 }

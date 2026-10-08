@@ -10,7 +10,7 @@ dependencies:
   - current_identifier: null
     type: package
     value:
-      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.1@d5a76690f4e0a153455a3f6f2bafef28197ac722ff67124ee226e9a3ed8f354d
+      plugin_unique_identifier: czoemeijer/dify-social-report:0.1.1@efaf05ea2d5a036e221a2a4e0f2da285fa319df7ec6c8bb0e2a33504fdf334c4
 kind: app
 version: 0.6.0
 workflow:
