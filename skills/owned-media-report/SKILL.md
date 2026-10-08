@@ -1,35 +1,80 @@
 ---
 name: owned-media-report
-description: Collect and reconcile authorized Instagram organic and Meta Ads performance through the canonical social_report core.
+description: Generate, explain, and refresh a complete authorized Instagram organic and Meta Ads report from one reusable snapshot.
 ---
 
 # Owned Media Report
 
-Use this Skill for first-party business assets that have authorized Meta API access. Keep the
-existing `social-report-audit` and `story-series-extract` Skills for third-party creator evidence;
-an operator token does not grant private creator Insights unless that creator independently
-authorized the application.
+Use this Skill when a user asks in natural language for an owned-media report, a previous-month
+report, an organic-versus-paid explanation, or a refresh of an existing report. The normal user
+should not have to compose low-level CLI calls. Keep `social-report-audit` and
+`story-series-extract` for third-party creator evidence; an operator token does not grant private
+creator Insights unless that creator independently authorized the application.
 
 ## Workflow
 
-1. Run `scripts/owned_media_report.py doctor` and stop on a core `FAIL`.
-2. Run `scripts/owned_media_report.py discover --json`. If multiple compatible assets are shown,
-   require explicit `META_PAGE_ID` and/or `META_AD_ACCOUNT_ID`; never choose the first result.
-3. Pull a bounded reporting period with `pull --from YYYY-MM-DD --to YYYY-MM-DD`.
-4. Optionally pass `--budget path/to/plan.csv` or `.tsv` for deterministic plan-versus-actual
-   reconciliation.
-5. Export JSON for auditability, CSV for analysis, or Markdown for a concise handoff.
+For a request such as “Generate the September owned-media report and analyze what matters,” operate
+autonomously:
 
-The wrapper contains no API or metric logic. It invokes `social_report.cli`, which uses the shared
-canonical source adapter, matching rules, budget reconciler, and exporters.
+1. Resolve the requested period. Use exact dates when supplied. For "last month" or an unspecified
+   monthly report, use the previous completed calendar month; never silently use a partial current
+   month.
+2. Look for a matching snapshot in the report directory or at a supplied snapshot path before
+   checking authentication. A complete historical snapshot can be rendered offline even when it is
+   stale; disclose its capture time and do not imply that it was refreshed.
+3. Determine whether fresh API access is available only if no usable snapshot exists or the user
+   explicitly requests a refresh. Fetch once when truly necessary; every exporter must use the same
+   resulting snapshot.
+4. Generate compact deterministic `analysis.json`. Read that file, not the large snapshot, and
+   create evidence-backed insights whose references resolve to analysis fields.
+5. Render Markdown, HTML, PDF, CSV, JSON, and the narrative from the same snapshot. Inspect the PDF
+   for clipping, overlap, blank pages, and legibility.
+6. Return the PDF path first with concise findings and a clear freshness statement.
+
+The user does not need to know the diagnostic commands. The single high-level operator entry point
+used behind this workflow is:
+
+   ```bash
+   python3 skills/owned-media-report/scripts/owned_media_report.py report \
+     --from YYYY-MM-DD --to YYYY-MM-DD \
+     --output-dir private/reports/YYYY-MM --language en
+   ```
+
+   Omit both date flags to select the previous completed month. Add `--refresh` only when the user
+   asks for fresh data. Add `--budget path/to/plan.csv` or `.tsv` when a plan is supplied.
+7. The command checks configuration/assets only when acquisition is necessary, reuses a fresh
+   same-period `snapshot.json`, performs one live acquisition when needed, computes deterministic
+   analytics, validates evidence references in `insights.json`, and writes `snapshot.json`,
+   `analysis.json`, `insights.json`, `report.json`, `report.csv`, `report.md`, `report.html`, and
+   `report.pdf`.
+8. Read compact `analysis.json`, not the large raw snapshot, to explain the result. Keep claims tied
+   to named analysis fields, distinguish observations from causes, avoid external benchmarks unless
+   the user supplied them, and call out unavailable metrics explicitly.
+9. Inspect the rendered PDF for clipping, overlap, blank pages, and legibility. Give the user the PDF
+   path first; HTML and Markdown are audit/fallback artifacts.
+10. If asset selection is ambiguous, use `doctor` and `discover --json`, then require explicit
+   `META_PAGE_ID` / `META_AD_ACCOUNT_ID`; never choose the first result.
+
+The high-level wrapper invokes the canonical `social_report` workflow. The core owns collection,
+snapshot validation, matching, analytics, budget reconciliation, and rendering. Low-level `pull`
+commands, `doctor`, `discover`, cache details, and renderer selection remain developer/operator
+internals, not the normal Skill workflow.
 
 ## Guardrails
 
 - Read credentials only from the process environment or ignored `.env.local`.
-- Never paste, print, store in reports, or commit access tokens, app secrets, or paging URLs.
+- Keep output under an ignored private directory. Never paste, print, store in reports, or commit
+  access tokens, app secrets, paging URLs, snapshots, account IDs, campaign names, or captions.
+- Reuse a fresh snapshot unless `--refresh` is explicit. A valid same-period stale snapshot may be
+  used deliberately for offline historical rendering or as a clearly reported rate-limit fallback;
+  never describe it as freshly acquired.
 - Treat organic reach and paid reach as separate, non-additive domains.
 - Treat `total_interactions` as platform-reported and separate from calculated action components.
 - Accept only exact platform identifiers or normalized permalinks as authoritative matches.
+- Compare campaigns only within objective groups. Do not infer conversions from clicks, landing
+  views, or engagement actions.
+- Treat correlations and period differences as observations, not causal effects. Do not invent
+  industry benchmarks or recommend budget changes without evidence and an explicit decision basis.
 - Do not publish content, mutate campaigns, or request `ads_management` for reporting.
 - Mark absent and unsupported metrics unavailable; never turn absence into zero.
 

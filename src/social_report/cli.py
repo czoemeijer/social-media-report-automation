@@ -4,25 +4,61 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
 from .budget import decimal_to_string, load_budget, reconcile_budget
 from .owned_reporting import export_owned_csv, export_owned_json, export_owned_markdown
+from .owned_workflow import run_owned_workflow
 from .sources.meta.ads import collect_ads
 from .sources.meta.auth import MetaConfig, load_env_file
 from .sources.meta.client import MetaAPIError, MetaClient
-from .sources.meta.discovery import AssetResolutionError, discover_assets, resolve_assets
+from .sources.meta.discovery import (
+    AssetResolutionError,
+    ResolvedAssets,
+    discover_assets,
+    resolve_assets,
+)
 from .sources.meta.instagram import collect_instagram, resolve_creative_media_references
 from .sources.meta.mapper import build_owned_media_report
 from .sources.meta.matching import match_paid_to_organic
-from .sources.meta.tokens import debug_token, exchange_user_token
+from .sources.meta.tokens import debug_token, exchange_user_token, token_lifecycle_status
 
 
 def _config() -> MetaConfig:
     load_env_file(Path(".env.local"))
     return MetaConfig.from_env()
+
+
+def _report_config(args: argparse.Namespace) -> MetaConfig:
+    snapshot_path = (
+        Path(args.snapshot_input)
+        if args.snapshot_input
+        else Path(args.output_dir) / "snapshot.json"
+    )
+    if snapshot_path.exists() and not args.refresh:
+        try:
+            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            metadata = snapshot.get("metadata") if isinstance(snapshot, dict) else None
+            version = metadata.get("api_version") if isinstance(metadata, dict) else "v26.0"
+        except (OSError, json.JSONDecodeError):
+            version = "v26.0"
+        return MetaConfig(access_token="", graph_version=str(version or "v26.0"))
+    load_env_file(Path(".env.local"))
+    if os.environ.get("META_ACCESS_TOKEN", "").strip():
+        return MetaConfig.from_env()
+    version = os.environ.get("META_GRAPH_VERSION", "v26.0").strip()
+    if not version.startswith("v") or "." not in version:
+        raise ValueError("META_GRAPH_VERSION must look like v26.0")
+    return MetaConfig(
+        access_token="",
+        graph_version=version,
+        page_id=os.environ.get("META_PAGE_ID") or None,
+        ig_user_id=os.environ.get("META_IG_USER_ID") or None,
+        ad_account_id=os.environ.get("META_AD_ACCOUNT_ID") or None,
+    )
 
 
 def _json(payload: object) -> str:
@@ -63,10 +99,11 @@ def _resolved(
     *,
     resolve_page: bool = True,
     resolve_ad_account: bool = True,
-) -> Mapping[str, Optional[str]]:
+) -> ResolvedAssets:
     return resolve_assets(
         discover_assets(client),
         config,
+        client=client,
         resolve_page=resolve_page,
         resolve_ad_account=resolve_ad_account,
     )
@@ -92,8 +129,15 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     if config.app_id and config.app_secret:
         try:
             token = debug_token(config, transport=client.transport)
-            validity = "valid" if token.get("is_valid") else "invalid"
-            add("token_debug", "PASS" if token.get("is_valid") else "FAIL", validity)
+            lifecycle = token_lifecycle_status(token)
+            missing = lifecycle.get("missing_scopes")
+            missing_count = len(missing) if isinstance(missing, list) else 0
+            detail = (
+                f"{lifecycle.get('renewal')}; "
+                f"days remaining: {lifecycle.get('days_remaining')}; "
+                f"missing required scopes: {missing_count}"
+            )
+            add("token_debug", str(lifecycle.get("status", "WARNING")), detail)
         except MetaAPIError as exc:
             add("token_debug", "WARNING", f"unavailable (code {exc.code})")
     else:
@@ -101,10 +145,25 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     try:
         assets = discover_assets(client)
         add("asset_discovery", "PASS", "authorized assets listed")
-        selected = resolve_assets(assets, config)
+        selected = resolve_assets(assets, config, client=client)
+        validation = selected["validation"]
+        for key, label in (
+            ("page", "page_selector"),
+            ("instagram", "instagram_selector"),
+            ("page_instagram_relationship", "page_instagram_relationship"),
+            ("ad_account", "ad_account_selector"),
+        ):
+            state = validation.get(key)
+            if state:
+                add(label, "WARNING" if state == "RELATIONSHIP_UNVERIFIED" else "PASS", state)
     except AssetResolutionError as exc:
         add("asset_resolution", "WARNING", str(exc))
-        selected = {"page_id": None, "ig_user_id": None, "ad_account_id": None}
+        selected = {
+            "page_id": None,
+            "ig_user_id": None,
+            "ad_account_id": None,
+            "validation": {},
+        }
     instagram_result: Optional[Mapping[str, object]] = None
     ig_id = selected.get("ig_user_id")
     if ig_id:
@@ -164,7 +223,7 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
         "FAIL"
         if any(row["status"] == "FAIL" for row in checks)
         else "WARNING"
-        if any(row["status"] == "WARNING" for row in checks)
+        if any(row["status"] in {"WARNING", "CRITICAL"} for row in checks)
         else "PASS"
     )
     return {"overall": overall, "checks": checks, "configuration": config.safe_summary()}
@@ -228,13 +287,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--breakdowns", help="Optional comma-separated Marketing API breakdowns"
         )
         _add_selectors(command)
+    report = commands.add_parser("report", help="Generate a complete snapshot-backed report bundle")
+    report.add_argument("--from", dest="date_from")
+    report.add_argument("--to", dest="date_to")
+    report.add_argument("--output-dir", required=True)
+    report.add_argument("--language", choices=("en", "cs", "zh"), default="en")
+    report.add_argument("--refresh", action="store_true")
+    report.add_argument("--offline", action="store_true")
+    report.add_argument("--budget")
+    report.add_argument("--snapshot-input")
+    report.add_argument("--insights")
+    report.add_argument("--max-age-hours", type=int, default=36)
+    _add_selectors(report)
     exchange = commands.add_parser("exchange-user-token")
     exchange.add_argument("--save-to", required=True)
     return parser
 
 
 def run_meta(args: argparse.Namespace) -> int:
-    config = _override_selectors(_config(), args)
+    base_config = _report_config(args) if args.command == "report" else _config()
+    config = _override_selectors(base_config, args)
     client = MetaClient(config)
     if args.command == "doctor":
         result = doctor(client, config)
@@ -245,6 +317,25 @@ def run_meta(args: argparse.Namespace) -> int:
         return 0
     if args.command == "exchange-user-token":
         _emit(exchange_user_token(config, save_to=Path(args.save_to)), as_json=True)
+        return 0
+    if args.command == "report":
+        result = dict(
+            run_owned_workflow(
+                config,
+                output_dir=Path(args.output_dir),
+                date_from=args.date_from,
+                date_to=args.date_to,
+                language=args.language,
+                refresh=args.refresh,
+                offline=args.offline,
+                budget=Path(args.budget) if args.budget else None,
+                snapshot_input=Path(args.snapshot_input) if args.snapshot_input else None,
+                insights_input=Path(args.insights) if args.insights else None,
+                max_age_hours=args.max_age_hours,
+            )
+        )
+        result.pop("analysis", None)
+        _emit(result, as_json=True)
         return 0
     selected = _resolved(
         client,
@@ -291,7 +382,11 @@ def run_meta(args: argparse.Namespace) -> int:
             creative_rows,
         )
     report = build_owned_media_report(
-        instagram=instagram, ads=ads, api_version=config.graph_version
+        instagram=instagram,
+        ads=ads,
+        api_version=config.graph_version,
+        date_from=args.date_from,
+        date_to=args.date_to,
     )
     if args.budget:
         report["budget_reconciliation"] = reconcile_budget(

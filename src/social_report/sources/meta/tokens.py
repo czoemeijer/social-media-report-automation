@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from .auth import MetaConfig, MetaConfigurationError
 from .client import MetaClient, Transport
+
+REQUIRED_REPORTING_SCOPES = (
+    "ads_read",
+    "instagram_basic",
+    "instagram_manage_insights",
+    "pages_read_engagement",
+    "pages_show_list",
+)
 
 
 def debug_token(config: MetaConfig, *, transport: Optional[Transport] = None) -> Mapping[str, Any]:
@@ -35,6 +44,73 @@ def debug_token(config: MetaConfig, *, transport: Optional[Transport] = None) ->
         "user_id",
     }
     return {key: value for key, value in data.items() if key in allowed}
+
+
+def token_lifecycle_status(
+    debug: Mapping[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    required_scopes: Sequence[str] = REQUIRED_REPORTING_SCOPES,
+) -> Mapping[str, object]:
+    """Classify official token-debug metadata without exposing credentials."""
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    raw_scopes = debug.get("scopes")
+    scopes = {str(scope) for scope in raw_scopes} if isinstance(raw_scopes, list) else set()
+    missing_scopes = sorted(set(required_scopes) - scopes)
+    if debug.get("is_valid") is False:
+        return {
+            "status": "FAIL",
+            "renewal": "INVALID",
+            "deadline_type": None,
+            "deadline": None,
+            "days_remaining": None,
+            "missing_scopes": missing_scopes,
+        }
+
+    deadlines = []
+    for key in ("expires_at", "data_access_expires_at"):
+        value = debug.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            deadlines.append((key, datetime.fromtimestamp(value, timezone.utc)))
+    deadline_type: Optional[str] = None
+    deadline: Optional[datetime] = None
+    if deadlines:
+        deadline_type, deadline = min(deadlines, key=lambda item: item[1])
+
+    status = "PASS"
+    renewal = "OK"
+    days_remaining: Optional[int] = None
+    if debug.get("is_valid") is not True:
+        status = "WARNING"
+        renewal = "VALIDITY_UNCONFIRMED"
+    if deadline is not None:
+        remaining_seconds = (deadline - current).total_seconds()
+        days_remaining = max(0, int(remaining_seconds // 86400))
+        if remaining_seconds <= 0:
+            status = "FAIL"
+            renewal = "EXPIRED"
+        elif remaining_seconds <= 3 * 86400:
+            status = "CRITICAL"
+            renewal = "RENEW_NOW"
+        elif remaining_seconds <= 7 * 86400:
+            status = "WARNING"
+            renewal = "RENEW_SOON"
+        elif remaining_seconds <= 14 * 86400:
+            status = "WARNING"
+            renewal = "RENEW"
+    if missing_scopes and status == "PASS":
+        status = "WARNING"
+    return {
+        "status": status,
+        "renewal": renewal,
+        "deadline_type": deadline_type,
+        "deadline": deadline.isoformat() if deadline else None,
+        "days_remaining": days_remaining,
+        "missing_scopes": missing_scopes,
+    }
 
 
 def exchange_user_token(

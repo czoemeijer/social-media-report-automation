@@ -69,6 +69,7 @@ build/
 *.egg-info/
 .venv/
 .codebase-memory/
+.local-cache/
 *.difypkg
 
 # Node & package manager

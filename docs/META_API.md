@@ -13,6 +13,22 @@ social-report meta discover --json
 social-report meta doctor
 ```
 
+For a normal complete report, use the Agent Skill. Its high-level command is also available to
+operators:
+
+```bash
+python3 skills/owned-media-report/scripts/owned_media_report.py report \
+  --from 2026-09-01 --to 2026-09-30 \
+  --output-dir private/reports/2026-09 --language en
+```
+
+Omitting both date flags selects the previous completed calendar month. The output directory holds
+the private `snapshot.json`, compact `analysis.json`, validated `insights.json`, and report
+JSON/CSV/Markdown/HTML/PDF. A fresh
+same-period snapshot is reused automatically; `--refresh` forces acquisition. Stale data is never
+silently reused, except as an explicitly reported same-period fallback when Meta rate-limits the
+refresh.
+
 With one unambiguous compatible relationship, selectors can resolve automatically. Multiple Pages
 or Ad Accounts require `META_PAGE_ID`, `META_AD_ACCOUNT_ID`, or matching CLI flags. The linked
 Instagram Professional account normally comes from the selected Page; `META_IG_USER_ID` is an
@@ -42,8 +58,9 @@ available.
 
 - Instagram: profile, paginated media, common media Insights, and Reel watch-time values preserved
   in milliseconds.
-- Ads: account metadata, campaigns, ad sets, ads, creatives, and Insights at account/campaign/ad
-  set/ad levels. Raw `actions` and `cost_per_action_type` arrays are retained alongside stable maps.
+- Ads: period-bounded Insights at account/campaign/ad set/ad levels are fetched first. Only IDs
+  present in those results are batch-read for campaign objective, ad set, ad, and creative metadata.
+  Raw `actions` and `cost_per_action_type` arrays are retained alongside stable maps.
 - Matching: exact `source_instagram_media_id`, normalized Instagram permalink, then another exact
   documented identifier. Caption/date similarity is never authoritative.
 - Budget: CSV/TSV, normalized configurable headers, Decimal money, explicit reconciliation states,
@@ -52,6 +69,11 @@ available.
 Organic reach and paid reach are never added and presented as unique reach. Organic views and paid
 impressions remain different metrics. Platform-reported `total_interactions` remains separate from
 the local sum of likes, comments, saves, and shares.
+
+The deterministic analysis keeps the Ads `clicks` field separate from `link_click`,
+`landing_page_view`, `post_engagement`, `post_reaction`, `video_view`, and save action types. Missing
+actions remain unavailable rather than becoming zero. Campaign rankings occur only inside the same
+objective group; sales efficiency requires an actual purchase/conversion action.
 
 When an Ad Creative points to an Instagram media object outside the selected owned account, the
 adapter may retain that exact object as `reference_only`. This proves content identity for the paid

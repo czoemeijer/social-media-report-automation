@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from .client import MetaClient
+from .client import MetaAPIError, MetaClient
 from .instagram import validate_date_range
 from .models import action_mapping, decimal_or_none, number_or_none, provenance, utc_now
 
@@ -30,6 +30,15 @@ IDENTITY_FIELDS = {
     "ad": ("account_id", "campaign_id", "adset_id", "ad_id", "ad_name"),
 }
 
+CAMPAIGN_FIELDS = "id,name,status,effective_status,objective"
+ADSET_FIELDS = "id,name,campaign_id,status,effective_status"
+CREATIVE_FIELDS = (
+    "id,name,effective_object_story_id,instagram_user_id,"
+    "effective_instagram_media_id,instagram_permalink_url,"
+    "source_instagram_media_id,source_facebook_post_id"
+)
+AD_FIELDS = f"id,name,campaign_id,adset_id,status,effective_status,creative{{{CREATIVE_FIELDS}}}"
+
 
 def normalize_ad_account_id(ad_account_id: str) -> str:
     return ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
@@ -50,9 +59,7 @@ def _list_edge(
 
 
 def list_campaigns(client: MetaClient, ad_account_id: str) -> List[Mapping[str, Any]]:
-    return _list_edge(
-        client, ad_account_id, "campaigns", "id,name,status,effective_status,objective"
-    )
+    return _list_edge(client, ad_account_id, "campaigns", CAMPAIGN_FIELDS)
 
 
 def list_adsets(client: MetaClient, ad_account_id: str) -> List[Mapping[str, Any]]:
@@ -60,22 +67,43 @@ def list_adsets(client: MetaClient, ad_account_id: str) -> List[Mapping[str, Any
         client,
         ad_account_id,
         "adsets",
-        "id,name,campaign_id,status,effective_status",
+        ADSET_FIELDS,
     )
 
 
 def list_ads(client: MetaClient, ad_account_id: str) -> List[Mapping[str, Any]]:
-    creative_fields = (
-        "id,name,effective_object_story_id,instagram_user_id,"
-        "effective_instagram_media_id,instagram_permalink_url,"
-        "source_instagram_media_id,source_facebook_post_id"
+    return _list_edge(client, ad_account_id, "ads", AD_FIELDS)
+
+
+def _insight_ids(rows: object, field: str) -> List[str]:
+    if not isinstance(rows, list):
+        return []
+    return sorted(
+        {str(row[field]) for row in rows if isinstance(row, dict) and row.get(field) is not None}
     )
-    return _list_edge(
-        client,
-        ad_account_id,
-        "ads",
-        f"id,name,campaign_id,adset_id,status,effective_status,creative{{{creative_fields}}}",
-    )
+
+
+def _read_objects_by_ids(
+    client: MetaClient, object_ids: List[str], fields: str, *, batch_size: int = 50
+) -> List[Mapping[str, Any]]:
+    """Read only objects proven active in the report period, using Graph multi-ID GETs."""
+
+    result: List[Mapping[str, Any]] = []
+    for offset in range(0, len(object_ids), batch_size):
+        batch = object_ids[offset : offset + batch_size]
+        try:
+            payload = client.get("", {"ids": ",".join(batch), "fields": fields})
+            result.extend(
+                payload[item_id] for item_id in batch if isinstance(payload.get(item_id), dict)
+            )
+        except MetaAPIError as exc:
+            if exc.code != 100:
+                raise
+            for item_id in batch:
+                payload = client.get(item_id, {"fields": fields})
+                if isinstance(payload, dict):
+                    result.append(payload)
+    return result
 
 
 def _normalize_insight(
@@ -148,23 +176,37 @@ def collect_ads(
     date_to: Optional[str] = None,
     breakdowns: Optional[str] = None,
 ) -> Dict[str, object]:
-    ads = list_ads(client, ad_account_id)
+    insights = {
+        level: get_insights(
+            client,
+            ad_account_id,
+            level=level,
+            date_from=date_from,
+            date_to=date_to,
+            breakdowns=breakdowns,
+        )
+        for level in ("account", "campaign", "adset", "ad")
+    }
+    campaign_ids = _insight_ids(insights["campaign"], "campaign_id")
+    adset_ids = _insight_ids(insights["adset"], "adset_id")
+    ad_ids = _insight_ids(insights["ad"], "ad_id")
+    campaigns = _read_objects_by_ids(client, campaign_ids, CAMPAIGN_FIELDS)
+    adsets = _read_objects_by_ids(client, adset_ids, ADSET_FIELDS)
+    ads = _read_objects_by_ids(client, ad_ids, AD_FIELDS)
+    creatives = [item["creative"] for item in ads if isinstance(item.get("creative"), dict)]
     return {
         "account": get_ad_account(client, ad_account_id),
-        "campaigns": list_campaigns(client, ad_account_id),
-        "adsets": list_adsets(client, ad_account_id),
+        "campaigns": campaigns,
+        "adsets": adsets,
         "ads": ads,
-        "creatives": [item["creative"] for item in ads if isinstance(item.get("creative"), dict)],
-        "insights": {
-            level: get_insights(
-                client,
-                ad_account_id,
-                level=level,
-                date_from=date_from,
-                date_to=date_to,
-                breakdowns=breakdowns,
-            )
-            for level in ("account", "campaign", "adset", "ad")
+        "creatives": creatives,
+        "insights": insights,
+        "collection": {
+            "scope": "report_period",
+            "campaigns_in_period": len(campaign_ids),
+            "adsets_in_period": len(adset_ids),
+            "ads_in_period": len(ad_ids),
+            "creatives_in_period": len(creatives),
         },
         "api_version": client.config.graph_version,
     }
