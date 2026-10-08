@@ -24,11 +24,13 @@ from that same snapshot. Dify is the
 secondary guided WebApp surface. The CLI remains a low-level operator interface and calls the same
 workflow rather than maintaining parallel report logic.
 
-For Meta Ads, the source adapter requests bounded Insights before metadata. Campaign, ad set, and
-ad identifiers found in the selected period are then batch-read directly; normal reporting never
-enumerates the full historical account inventory. Snapshot identity includes provider, selected
-assets, API version, and exact period. Freshness is explicit, `--refresh` is opt-in, and a stale
-same-period snapshot is accepted only as a reported fallback after a rate-limit failure.
+For Meta Ads, the source adapter requests bounded Insights before metadata. Campaign and ad
+identifiers found in the selected period are then read directly for campaign and ad/creative
+metadata; ad set identity already comes from ad set Insights. Normal reporting never enumerates the
+full historical account inventory. Snapshot identity includes provider, selected assets, API
+version, and exact period. Completed historical snapshots remain reusable unless `--refresh` is
+explicit; current/partial snapshots retain TTL semantics. A local single-flight lock coalesces
+concurrent identical acquisitions, and a valid same-period snapshot is the rate-limit fallback.
 
 Dify performs AI work:
 

@@ -18,8 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `social-report meta` CLI, sanitized live smoke test, and third portable `owned-media-report` Skill.
 - Agent-first owned-media `report` workflow with explicit previous-month defaults, one-fetch private
   snapshot reuse, refresh/rate-limit fallback semantics, and compact `analysis.json`.
-- Period-first Ads collection that batch-reads metadata only for campaign, ad set, and ad IDs with
-  Insights in the selected period.
+- Period-first Ads collection that reads metadata only for campaign and ad IDs with Insights in the
+  selected period; ad set identity stays in its existing Insights rows.
+- Opportunistic Meta usage-header telemetry, deterministic local quota health, classified API
+  errors, no-retry rate-limit handling, and same-period snapshot fallback.
+- Validated atomic manual User Token rotation, immutable completed-period cache reuse, and local
+  single-flight acquisition for identical concurrent reports.
 - Deterministic organic ratios and format/Reels summaries, distinct paid action metrics,
   objective-aware campaign efficiency, and period-scoped Paid-to-Organic match statistics.
 - Standalone responsive/printable HTML report and first-class PDF with inline CSS/SVG charts,
@@ -36,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy, deployment, architecture, and security documentation.
 
 ### Changed
+- Removed redundant ad set metadata reads while preserving period-scoped ad set Insights and the
+  multi-ID compatibility fallback for campaign/ad metadata.
 - README presentation now follows the stronger historical project style while documenting the
   current Dify, Agent Skill, creator-evidence, and owned-media API architecture.
 - Agent Skill scripts expose high-level workflows over the shared core; low-level CLI commands remain

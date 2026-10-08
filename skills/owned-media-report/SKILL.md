@@ -23,8 +23,10 @@ autonomously:
    checking authentication. A complete historical snapshot can be rendered offline even when it is
    stale; disclose its capture time and do not imply that it was refreshed.
 3. Determine whether fresh API access is available only if no usable snapshot exists or the user
-   explicitly requests a refresh. Fetch once when truly necessary; every exporter must use the same
-   resulting snapshot.
+   explicitly requests a refresh. A completed historical period remains reusable regardless of the
+   generic TTL; current or partial periods do not. Fetch once when truly necessary; a local
+   single-flight lock coalesces concurrent requests for the same acquisition, and every exporter
+   must use the same resulting snapshot.
 4. Generate compact deterministic `analysis.json`. Read that file, not the large snapshot, and
    create evidence-backed insights whose references resolve to analysis fields.
 5. Render Markdown, HTML, PDF, CSV, JSON, and the narrative from the same snapshot. Inspect the PDF
@@ -65,9 +67,13 @@ internals, not the normal Skill workflow.
 - Read credentials only from the process environment or ignored `.env.local`.
 - Keep output under an ignored private directory. Never paste, print, store in reports, or commit
   access tokens, app secrets, paging URLs, snapshots, account IDs, campaign names, or captions.
-- Reuse a fresh snapshot unless `--refresh` is explicit. A valid same-period stale snapshot may be
-  used deliberately for offline historical rendering or as a clearly reported rate-limit fallback;
-  never describe it as freshly acquired.
+- Reuse a valid completed-period snapshot unless `--refresh` is explicit. For current/partial
+  periods, require a fresh snapshot unless explicitly offline. A valid same-period stale snapshot
+  may be used as a clearly reported rate-limit fallback; never describe it as freshly acquired.
+- Read quota telemetry only from response headers already returned by required calls. Never poll for
+  quota. Stop on `RATE_LIMIT`; do not retry-storm, and report snapshot fallback or wait guidance.
+- Treat token exchange as a manual operator action. Validate the candidate before saving to a new
+  path; never invent unattended renewal, automate login, overwrite an active token, or expose it.
 - Treat organic reach and paid reach as separate, non-additive domains.
 - Treat `total_interactions` as platform-reported and separate from calculated action components.
 - Accept only exact platform identifiers or normalized permalinks as authoritative matches.

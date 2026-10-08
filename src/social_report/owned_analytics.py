@@ -72,8 +72,11 @@ def _short_content_name(value: object) -> Optional[str]:
 
 def _published_label(value: object) -> str:
     text = str(value or "")
+    normalized = text.replace("Z", "+00:00")
+    if re.search(r"[+-]\d{4}$", normalized):
+        normalized = f"{normalized[:-2]}:{normalized[-2:]}"
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized)
         return parsed.strftime("%d %b").lstrip("0")
     except ValueError:
         return text[:10] or "Undated"

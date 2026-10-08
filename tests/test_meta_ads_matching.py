@@ -4,6 +4,7 @@ import unittest
 
 from social_report.sources.meta.ads import collect_ads, get_insights, normalize_ad_account_id
 from social_report.sources.meta.auth import MetaConfig
+from social_report.sources.meta.client import MetaAPIError
 from social_report.sources.meta.mapper import build_owned_media_report
 from social_report.sources.meta.matching import match_paid_to_organic, normalize_permalink
 
@@ -11,7 +12,11 @@ from social_report.sources.meta.matching import match_paid_to_organic, normalize
 class FakeAdsClient:
     config = MetaConfig(access_token="token")
 
+    def __init__(self):
+        self.calls = []
+
     def paginate(self, path, params=None):
+        self.calls.append(("paginate", path, params))
         yield {
             f"{params['level']}_id": "42",
             "spend": "12.30",
@@ -22,6 +27,7 @@ class FakeAdsClient:
         }
 
     def get(self, path, params=None):
+        self.calls.append(("get", path, params))
         if path.startswith("act_"):
             return {"id": path, "currency": "EUR"}
         ids = str(params["ids"]).split(",")
@@ -49,9 +55,38 @@ class AdsAndMatchingTest(unittest.TestCase):
         self.assertEqual(result["collection"]["adsets_in_period"], 1)
         self.assertEqual(result["collection"]["ads_in_period"], 1)
         self.assertEqual(len(result["campaigns"]), 1)
-        self.assertEqual(len(result["adsets"]), 1)
+        self.assertEqual(result["adsets"], [{"id": "42"}])
         self.assertEqual(len(result["ads"]), 1)
         self.assertEqual(len(result["creatives"]), 1)
+        metadata_fields = [
+            str(params.get("fields"))
+            for method, path, params in client.calls
+            if method == "get" and isinstance(params, dict) and "ids" in params
+        ]
+        self.assertEqual(len(metadata_fields), 2)
+        self.assertFalse(any(fields == "id,name,campaign_id,status,effective_status" for fields in metadata_fields))
+        self.assertEqual(len(client.calls), 7)
+        self.assertFalse(any(path.endswith("/campaigns") for _, path, _ in client.calls))
+        self.assertFalse(any(path.endswith("/adsets") for _, path, _ in client.calls))
+        self.assertFalse(any(path.endswith("/ads") for _, path, _ in client.calls))
+
+    def test_multi_id_code_100_falls_back_to_individual_period_objects(self):
+        class RejectMultiIdClient(FakeAdsClient):
+            def get(self, path, params=None):
+                self.calls.append(("get", path, params))
+                if path.startswith("act_"):
+                    return {"id": path, "currency": "EUR"}
+                if path == "":
+                    raise MetaAPIError("multi-ID unsupported", status=400, code=100)
+                if "creative{" in str(params.get("fields")):
+                    return {"id": path, "creative": {"id": f"creative-{path}"}}
+                return {"id": path}
+
+        client = RejectMultiIdClient()
+        result = collect_ads(client, "1", date_from="2026-09-01", date_to="2026-09-30")
+        self.assertEqual([row["id"] for row in result["campaigns"]], ["42"])
+        self.assertEqual([row["id"] for row in result["ads"]], ["42"])
+        self.assertEqual(result["creatives"][0]["id"], "creative-42")
 
     def test_source_media_id_has_priority_over_permalink(self):
         organic = [

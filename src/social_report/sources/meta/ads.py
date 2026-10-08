@@ -83,6 +83,27 @@ def _insight_ids(rows: object, field: str) -> List[str]:
     )
 
 
+def _adsets_from_insights(rows: object) -> List[Mapping[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    result: List[Mapping[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("adset_id") is None:
+            continue
+        result.append(
+            {
+                key: value
+                for key, value in {
+                    "id": str(row["adset_id"]),
+                    "name": row.get("adset_name"),
+                    "campaign_id": row.get("campaign_id"),
+                }.items()
+                if value is not None
+            }
+        )
+    return result
+
+
 def _read_objects_by_ids(
     client: MetaClient, object_ids: List[str], fields: str, *, batch_size: int = 50
 ) -> List[Mapping[str, Any]]:
@@ -191,8 +212,8 @@ def collect_ads(
     adset_ids = _insight_ids(insights["adset"], "adset_id")
     ad_ids = _insight_ids(insights["ad"], "ad_id")
     campaigns = _read_objects_by_ids(client, campaign_ids, CAMPAIGN_FIELDS)
-    adsets = _read_objects_by_ids(client, adset_ids, ADSET_FIELDS)
     ads = _read_objects_by_ids(client, ad_ids, AD_FIELDS)
+    adsets = _adsets_from_insights(insights["adset"])
     creatives = [item["creative"] for item in ads if isinstance(item.get("creative"), dict)]
     return {
         "account": get_ad_account(client, ad_account_id),

@@ -11,7 +11,7 @@ from typing import Dict, List, Mapping, Optional, Sequence
 
 from .budget import decimal_to_string, load_budget, reconcile_budget
 from .owned_reporting import export_owned_csv, export_owned_json, export_owned_markdown
-from .owned_workflow import run_owned_workflow
+from .owned_workflow import previous_completed_month, run_owned_workflow
 from .sources.meta.ads import collect_ads
 from .sources.meta.auth import MetaConfig, load_env_file
 from .sources.meta.client import MetaAPIError, MetaClient
@@ -115,6 +115,23 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     def add(name: str, status: str, detail: str) -> None:
         checks.append({"name": name, "status": status, "detail": detail})
 
+    def add_quota() -> Mapping[str, object]:
+        quota = client.quota_summary
+        state = str(quota.get("status", "UNKNOWN"))
+        check_status = {
+            "UNKNOWN": "UNAVAILABLE",
+            "HEALTHY": "PASS",
+            "ELEVATED": "WARNING",
+            "HIGH": "WARNING",
+            "CRITICAL": "CRITICAL",
+            "BLOCKED": "FAIL",
+        }.get(state, "UNAVAILABLE")
+        utilization = quota.get("max_utilization_pct")
+        display = utilization if utilization is not None else "unknown"
+        detail = f"{state}; max observed utilization: {display}"
+        add("quota", check_status, detail)
+        return quota
+
     add("configuration", "PASS", f"{config.graph_version}; {config.auth_mode}")
     try:
         identity = client.get("me", {"fields": "id"})
@@ -125,10 +142,16 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
         )
     except MetaAPIError as exc:
         add("graph_api", "FAIL", f"request rejected (status {exc.status}, code {exc.code})")
-        return {"overall": "FAIL", "checks": checks, "configuration": config.safe_summary()}
+        quota = add_quota()
+        return {
+            "overall": "FAIL",
+            "checks": checks,
+            "configuration": config.safe_summary(),
+            "quota": quota,
+        }
     if config.app_id and config.app_secret:
         try:
-            token = debug_token(config, transport=client.transport)
+            token = debug_token(config, client=client)
             lifecycle = token_lifecycle_status(token)
             missing = lifecycle.get("missing_scopes")
             missing_count = len(missing) if isinstance(missing, list) else 0
@@ -193,7 +216,8 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
     ad_id = selected.get("ad_account_id")
     if ad_id:
         try:
-            ads = collect_ads(client, ad_id)
+            period_start, period_end = previous_completed_month()
+            ads = collect_ads(client, ad_id, date_from=period_start, date_to=period_end)
             add("ads_insights", "PASS", "account/campaign/adset/ad levels readable")
             if ig_id and instagram_result is not None:
                 media_value = instagram_result.get("media", [])
@@ -219,6 +243,7 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
             add("ads_insights", "FAIL", f"read failed (code {exc.code})")
     else:
         add("ads_insights", "UNAVAILABLE", "no unambiguous Ad Account selected")
+    quota = add_quota()
     overall = (
         "FAIL"
         if any(row["status"] == "FAIL" for row in checks)
@@ -226,7 +251,12 @@ def doctor(client: MetaClient, config: MetaConfig) -> Mapping[str, object]:
         if any(row["status"] in {"WARNING", "CRITICAL"} for row in checks)
         else "PASS"
     )
-    return {"overall": overall, "checks": checks, "configuration": config.safe_summary()}
+    return {
+        "overall": overall,
+        "checks": checks,
+        "configuration": config.safe_summary(),
+        "quota": quota,
+    }
 
 
 def _enrich_ad_actuals(ads: Mapping[str, object]) -> List[Mapping[str, object]]:
