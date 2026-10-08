@@ -1,5 +1,17 @@
 # Architecture
 
+## Source boundaries
+
+There are two intentional evidence paths. Third-party creator data enters through screenshots or
+ZIPs because an operator's Meta token normally cannot read a creator's private Insights. Authorized
+owned assets enter through `src/social_report/sources/meta`. Both converge on the canonical
+deterministic core and exports; Skills and Dify remain adapters, never competing business-logic
+implementations.
+
+The Meta adapter is read-only and split into auth/client, discovery, Instagram, Ads, Insights
+normalization, exact identity matching, and canonical mapping. A future TikTok source should reuse
+the same source-to-canonical boundary without changing current creator evidence semantics.
+
 ## Boundaries
 
 `src/social_report` is the only maintained source of business rules. Agent Skill scripts import it.

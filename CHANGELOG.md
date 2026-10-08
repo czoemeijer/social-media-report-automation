@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - Unreleased
 
 ### Added
+- Generic, environment-driven Meta Graph v26.0 source adapter for authorized Page, Instagram
+  Professional, and Ad Account discovery.
+- Read-only Instagram profile/media/Insights and Marketing API account/campaign/ad set/ad
+  collection with cursor pagination, bounded retry, structured errors, and credential redaction.
+- Exact Paid-to-Organic matching through source media IDs and normalized permalinks.
+- CSV/TSV media-budget parsing and Decimal-based plan-versus-actual reconciliation at one selected
+  Ads Insights level.
+- `social-report meta` CLI, sanitized live smoke test, and third portable `owned-media-report` Skill.
+- Generated canonical `owned_media_report` JSON Schema.
 - Project-owned Dify plugin with safe intake, ZIP normalization, per-asset file selection,
   extraction validation, deterministic audit, and JSON/CSV/Markdown export tools.
 - Dify workflow DSL for global reconstruction, grouped vision extraction, confidence-gated review,
@@ -19,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy, deployment, architecture, and security documentation.
 
 ### Changed
+- README presentation now follows the stronger historical project style while documenting the
+  current Dify, Agent Skill, creator-evidence, and owned-media API architecture.
 - Agent Skill scripts are thin wrappers over the shared core.
 - Missing scope now defaults to `unknown`, never `organic`.
 - Paid, organic, mixed-or-unknown, and unknown metrics are aggregated separately.
