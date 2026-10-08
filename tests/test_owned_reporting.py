@@ -89,6 +89,31 @@ class OwnedReportingTest(unittest.TestCase):
             {"date_from": "2026-09-01", "date_to": "2026-09-30"},
         )
 
+    def test_mapper_excludes_resolved_media_outside_report_period(self):
+        report = build_owned_media_report(
+            instagram={
+                "media": [
+                    {"id": "august", "timestamp": "2026-08-31T23:00:00+0000"},
+                    {"id": "september", "timestamp": "2026-09-15T10:00:00+0000"},
+                    {"id": "october", "timestamp": "2026-10-01T00:00:00+0000"},
+                ]
+            },
+            ads={
+                "creatives": [{"id": "creative", "source_instagram_media_id": "august"}],
+                "ads": [],
+                "insights": {},
+            },
+            api_version="v26.0",
+            date_from="2026-09-01",
+            date_to="2026-09-30",
+        )
+        self.assertEqual(
+            [item["identity"]["media_id"] for item in report["content"]],
+            ["september"],
+        )
+        self.assertEqual(report["paid_organic_matches"][0]["organic_media_id"], "august")
+        self.assertIn("2 resolved media item(s)", report["warnings"][-1])
+
     def test_markdown_uses_account_paid_kpis_without_summing_organic_reach(self):
         payload = _payload()
         payload["content"] = [
