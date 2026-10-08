@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from .client import MetaClient
+from .client import MetaAPIError, MetaClient
 from .instagram import validate_date_range
 from .models import action_mapping, decimal_or_none, number_or_none, provenance, utc_now
 
@@ -91,10 +91,18 @@ def _read_objects_by_ids(
     result: List[Mapping[str, Any]] = []
     for offset in range(0, len(object_ids), batch_size):
         batch = object_ids[offset : offset + batch_size]
-        payload = client.get("", {"ids": ",".join(batch), "fields": fields})
-        result.extend(
-            payload[item_id] for item_id in batch if isinstance(payload.get(item_id), dict)
-        )
+        try:
+            payload = client.get("", {"ids": ",".join(batch), "fields": fields})
+            result.extend(
+                payload[item_id] for item_id in batch if isinstance(payload.get(item_id), dict)
+            )
+        except MetaAPIError as exc:
+            if exc.code != 100:
+                raise
+            for item_id in batch:
+                payload = client.get(item_id, {"fields": fields})
+                if isinstance(payload, dict):
+                    result.append(payload)
     return result
 
 
