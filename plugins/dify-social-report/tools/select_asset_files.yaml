@@ -26,6 +26,12 @@ parameters:
       en_US: One asset object from global campaign reconstruction.
     llm_description: The current iteration item containing source_files.
     form: llm
+output_schema:
+  type: object
+  properties:
+    selected_count:
+      type: number
+      description: Number of matched files for the asset group
 extra:
   python:
     source: tools/select_asset_files.py

@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import yaml
@@ -97,12 +97,28 @@ class FakeClient:
         self.calls.append({"method": "GET", "path": path, "auth": auth})
         return self._response("GET", path)
 
-    def post(self, path: str, payload: Any, *, auth: str) -> Tuple[int, Any]:
-        self.calls.append({"method": "POST", "path": path, "auth": auth, "payload": payload})
+    def post(
+        self,
+        path: str,
+        payload: Any,
+        *,
+        auth: str,
+        headers: Optional[Mapping[str, str]] = None,
+    ) -> Tuple[int, Any]:
+        self.calls.append(
+            {"method": "POST", "path": path, "auth": auth, "payload": payload, "headers": headers}
+        )
         return self._response("POST", path)
 
     def upload_file(
-        self, path: str, file_path: Path, *, form_field: str, auth: str
+        self,
+        path: str,
+        file_path: Path,
+        *,
+        form_field: str,
+        auth: str,
+        headers: Optional[Mapping[str, str]] = None,
+        fields: Optional[Mapping[str, str]] = None,
     ) -> Tuple[int, Any]:
         self.calls.append(
             {
@@ -111,6 +127,8 @@ class FakeClient:
                 "auth": auth,
                 "form_field": form_field,
                 "file": file_path,
+                "headers": headers,
+                "fields": fields,
             }
         )
         return self._response("UPLOAD", path)
@@ -1088,6 +1106,11 @@ class TestDeterministicParity(unittest.TestCase):
             (200, {"leaked_dependencies": []}),
         )
         client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflows/draft",
+            (200, {"graph": {"nodes": [], "edges": []}}),
+        )
+        client.queue(
             "POST",
             "/console/api/apps/app-1/workflows/publish",
             (200, {"result": "success", "created_at": 1791497500}),
@@ -1107,6 +1130,36 @@ class TestDeterministicParity(unittest.TestCase):
         self.assertEqual(res["status"], "PUBLISHED")
         self.assertEqual(res["version_number"], 1)
         self.assertEqual(res["publishability"], "PASS")
+
+    def test_publish_workflow_blocks_on_invalid_variables(self):
+        client = FakeClient()
+        client.queue_discovery_1_17_1()
+        client.queue(
+            "GET",
+            "/openapi/v1/apps/app-1/dependencies:check",
+            (200, {"leaked_dependencies": []}),
+        )
+        invalid_draft = {
+            "graph": {
+                "nodes": [
+                    {
+                        "id": "node-1",
+                        "data": {
+                            "type": "code",
+                            "variables": [{"variable": "x", "value_selector": ["missing_node", "val"]}],
+                        },
+                    }
+                ],
+                "edges": [],
+            }
+        }
+        client.queue(
+            "GET",
+            "/console/api/apps/app-1/workflows/draft",
+            (200, invalid_draft),
+        )
+        with self.assertRaisesRegex(DeploymentError, "PUBLISH_BLOCKED: INVALID_VARIABLE_REFERENCE"):
+            publish_workflow(client, "app-1")  # type: ignore[arg-type]
 
     def test_publish_workflow_requires_console_auth(self):
         client = FakeClient(

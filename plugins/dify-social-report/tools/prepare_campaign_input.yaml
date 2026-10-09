@@ -17,6 +17,15 @@ parameters:
       en_US: PNG, JPEG, WEBP, GIF, or ZIP files. File limits are enforced by the plugin and Dify.
     llm_description: The complete user-uploaded file list.
     form: llm
+output_schema:
+  type: object
+  properties:
+    manifest:
+      type: object
+      description: Campaign manifest object containing files list and metadata
+    manifest_json:
+      type: string
+      description: Compact JSON string representation of the manifest
 extra:
   python:
     source: tools/prepare_campaign_input.py

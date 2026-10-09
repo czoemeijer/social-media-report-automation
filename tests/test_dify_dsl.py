@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import copy
 import unittest
 from pathlib import Path
 
-from scripts.validate_dify_dsl import validate
+import yaml
+
+from scripts.validate_dify_dsl import validate, validate_variable_references
 
 
 class DifyDslTest(unittest.TestCase):
@@ -78,6 +81,61 @@ class DifyDslTest(unittest.TestCase):
             second_val["data"]["tool_parameters"]["extraction_json"]["value"],
             ["merge_reviewed_assets", "campaign"],
         )
+
+    def test_semantic_variable_validation_regressions(self):
+        root = Path(__file__).resolve().parents[1]
+        base_data = yaml.safe_load(
+            (root / "deploy" / "dify" / "social-media-report.yml").read_text(encoding="utf-8")
+        )
+
+        # 1. Base DSL has zero variable reference errors
+        errors = validate_variable_references(base_data)
+        self.assertEqual(errors, [])
+
+        # 2. Nonexistent tool output produces error
+        data = copy.deepcopy(base_data)
+        nodes = data["workflow"]["graph"]["nodes"]
+        end_node = next(n for n in nodes if n["id"] == "end")
+        end_node["data"]["outputs"][0]["value_selector"] = ["audit", "nonexistent_field"]
+        errors = validate_variable_references(data)
+        self.assertTrue(any("nonexistent_field" in e for e in errors))
+
+        # 3. Wrong nested structured-output path produces error
+        data = copy.deepcopy(base_data)
+        nodes = data["workflow"]["graph"]["nodes"]
+        iter_node = next(n for n in nodes if n["id"] == "extract_iteration")
+        iter_node["data"]["iterator_selector"] = ["reconstruct", "structured_output", "nonexistent_key"]
+        errors = validate_variable_references(data)
+        self.assertTrue(any("nonexistent_key" in e for e in errors))
+
+        # 4. Invalid End selector (nonexistent source node)
+        data = copy.deepcopy(base_data)
+        nodes = data["workflow"]["graph"]["nodes"]
+        end_node = next(n for n in nodes if n["id"] == "end")
+        end_node["data"]["outputs"][0]["value_selector"] = ["ghost_node", "output"]
+        errors = validate_variable_references(data)
+        self.assertTrue(any("ghost_node" in e for e in errors))
+
+        # 5. Invalid code selector
+        data = copy.deepcopy(base_data)
+        nodes = data["workflow"]["graph"]["nodes"]
+        val_node = next(n for n in nodes if n["id"] == "validate")
+        val_node["data"]["tool_parameters"]["extraction_json"]["value"] = [
+            "join_extractions",
+            "fake_code_output",
+        ]
+        errors = validate_variable_references(data)
+        self.assertTrue(any("fake_code_output" in e for e in errors))
+
+        # 6. Standard tool outputs (files, text, json) are valid
+        data = copy.deepcopy(base_data)
+        nodes = data["workflow"]["graph"]["nodes"]
+        end_node = next(n for n in nodes if n["id"] == "end")
+        end_node["data"]["outputs"][0]["value_selector"] = ["audit", "files"]
+        end_node["data"]["outputs"][1]["value_selector"] = ["audit", "text"]
+        end_node["data"]["outputs"][2]["value_selector"] = ["audit", "json"]
+        errors = validate_variable_references(data)
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":
