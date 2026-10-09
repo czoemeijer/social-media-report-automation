@@ -7,7 +7,7 @@ from social_report.intake import match_asset_files
 from social_report.metrics import audit_campaign, calculate_single_item
 from social_report.reporting import export_csv, export_markdown, sanitize_csv_cell
 from social_report.stories import _diff_hours, summarize_story_series
-from social_report.validation import merge_review_status
+from social_report.validation import merge_review_status, validate_extraction
 
 
 class MockFile:
@@ -435,6 +435,57 @@ class ReviewFixesRegressionTest(unittest.TestCase):
         self.assertFalse(res_mixed["temporally_comparable"])
         self.assertIsNone(res_mixed["drop_off_rate_pct"])
         self.assertTrue(any("mixed" in w.lower() for w in res_mixed["warnings"]))
+
+    def test_validate_extraction_unsupported_review_status_normalized(self):
+        payload = {
+            "assets": [
+                {
+                    "asset_group_id": "asset_1",
+                    "platform": "instagram",
+                    "content_format": "post",
+                    "scope": "organic",
+                    "review_status": "unknown",
+                    "metrics": {
+                        "reach": {"value": 100, "precision": "exact"},
+                    },
+                }
+            ]
+        }
+        res = validate_extraction(payload)
+        self.assertEqual(res["assets"][0]["review_status"], "needs_review")
+        self.assertTrue(any("unsupported review_status 'unknown'" in w for w in res["warnings"]))
+        self.assertEqual(res["review_status"], "needs_review")
+
+    def test_validate_extraction_string_metrics_and_key_normalization(self):
+        payload = {
+            "assets": [
+                {
+                    "asset_group_id": "asset_str",
+                    "platform": "instagram",
+                    "content_format": "post",
+                    "scope": "organic",
+                    "review_status": "verified",
+                    "metrics": {
+                        "Profile visits": 12,
+                        "views": "1.2k",
+                        "reach": "1,100",
+                        "likes": 640,
+                    },
+                }
+            ]
+        }
+        res = validate_extraction(payload)
+        metrics = res["assets"][0]["metrics"]
+        self.assertIn("profile_visits", metrics)
+        self.assertEqual(metrics["profile_visits"]["value"], 12)
+        self.assertEqual(metrics["profile_visits"]["precision"], "exact")
+        self.assertEqual(metrics["views"]["value"], 1200)
+        self.assertEqual(metrics["views"]["precision"], "approximate")
+        self.assertEqual(metrics["views"]["evidence_text"], "1.2k")
+        self.assertEqual(metrics["reach"]["value"], 1100)
+        self.assertEqual(metrics["reach"]["precision"], "exact")
+        self.assertEqual(metrics["likes"]["value"], 640)
+        self.assertEqual(metrics["likes"]["precision"], "exact")
 
 
 if __name__ == "__main__":

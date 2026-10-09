@@ -17,6 +17,15 @@ parameters:
       en_US: Prepared direct screenshots, ZIPs, or a mixture of both.
     llm_description: The file output from Prepare campaign input.
     form: llm
+output_schema:
+  type: object
+  properties:
+    manifest:
+      type: object
+      description: Canonical campaign manifest object with entries and archive roots
+    manifest_json:
+      type: string
+      description: Compact JSON string representation of the unpacked manifest
 extra:
   python:
     source: tools/unpack_campaign_archive.py

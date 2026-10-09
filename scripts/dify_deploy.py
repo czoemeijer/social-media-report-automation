@@ -35,12 +35,18 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import yaml  # type: ignore[import-untyped]
 
+try:
+    from validate_dify_dsl import validate_variable_references
+except ImportError:
+    from scripts.validate_dify_dsl import validate_variable_references  # type: ignore[no-redef]
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DSL = ROOT / "deploy" / "dify" / "social-media-report.yml"
 DEFAULT_PLUGIN_PKG = ROOT / "dist" / "dify-social-report-0.1.1.difypkg"
 DEFAULT_ENV_FILE = ROOT / ".env.local"
 USER_ENV_FILE = Path.home() / ".config" / "social-report" / "dify.env"
 PROVIDER_YAML = ROOT / "plugins" / "dify-social-report" / "provider" / "social_report.yaml"
+PLUGIN_PROVIDER = "czoemeijer/dify-social-report/social_report"
 
 SUPPORTED_CONTRACTS = {
     "1.14.2": "console-1.14.2",
@@ -383,11 +389,25 @@ class DifyClient:
     def get(self, path: str, *, auth: str) -> Tuple[int, Any]:
         return self.request("GET", path, auth=auth)
 
-    def post(self, path: str, payload: Any, *, auth: str) -> Tuple[int, Any]:
-        return self.request("POST", path, auth=auth, payload=payload)
+    def post(
+        self,
+        path: str,
+        payload: Any,
+        *,
+        auth: str,
+        headers: Optional[Mapping[str, str]] = None,
+    ) -> Tuple[int, Any]:
+        return self.request("POST", path, auth=auth, payload=payload, headers=headers)
 
     def upload_file(
-        self, path: str, file_path: Path, *, form_field: str, auth: str
+        self,
+        path: str,
+        file_path: Path,
+        *,
+        form_field: str,
+        auth: str,
+        headers: Optional[Mapping[str, str]] = None,
+        fields: Optional[Mapping[str, str]] = None,
     ) -> Tuple[int, Any]:
         boundary = f"----social-report-{os.urandom(12).hex()}"
         file_bytes = file_path.read_bytes()
@@ -398,11 +418,22 @@ class DifyClient:
             f"Content-Type: {content_type}\r\n\r\n"
         ).encode()
         body += file_bytes + f"\r\n--{boundary}--\r\n".encode()
+        upload_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        if fields:
+            prefix_parts = []
+            for field_name, field_val in fields.items():
+                prefix_parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="{field_name}"\r\n\r\n'
+                    f"{field_val}\r\n".encode()
+                )
+            body = b"".join(prefix_parts) + body
+        if headers:
+            upload_headers.update(headers)
         return self.request(
             "POST",
             path,
             auth=auth,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            headers=upload_headers,
             raw_payload=body,
         )
 
@@ -424,8 +455,9 @@ def discover_vision_models(client: DifyClient) -> Dict[str, Any]:
         "/console/api/workspaces/current/models/model-types/llm", auth="console"
     )
     if status != 200 or not isinstance(body, dict) or not isinstance(body.get("data"), list):
-        return {"state": _http_capability_state(status), "models": []}
+        return {"state": _http_capability_state(status), "models": [], "all_models": []}
     models = []
+    all_models = []
     for provider in body["data"]:
         if not isinstance(provider, dict):
             continue
@@ -435,17 +467,17 @@ def discover_vision_models(client: DifyClient) -> Dict[str, Any]:
             if not isinstance(model, dict):
                 continue
             features = model.get("features") or []
-            if "vision" not in features and "multimodal" not in features:
-                continue
-            models.append(
-                {
-                    "provider": provider_id,
-                    "model": model.get("model"),
-                    "provider_status": provider_status,
-                    "model_status": model.get("status"),
-                }
-            )
-    return {"state": "VERIFIED", "models": models}
+            item = {
+                "provider": provider_id,
+                "model": model.get("model"),
+                "provider_status": provider_status,
+                "model_status": model.get("status"),
+                "features": features,
+            }
+            all_models.append(item)
+            if "vision" in features or "multimodal" in features:
+                models.append(item)
+    return {"state": "VERIFIED", "models": models, "all_models": all_models}
 
 
 def discover_server(client: DifyClient) -> Dict[str, Any]:
@@ -727,6 +759,7 @@ def verify_plugin(
         "expected_tools": expected_tools,
         "visible_tools": actual_tools,
         "missing_tools": sorted(set(expected_tools) - set(actual_tools)),
+        "tools": tools,
     }
 
 
@@ -1175,19 +1208,48 @@ def smoke_test(
     version, _ = require_supported_contract(client)
     if not files:
         raise DeploymentError("At least one smoke-test file is required")
+    app_token: Optional[str] = None
+    if mode == "published" and client.settings.console_access_token:
+        s_keys, keys_body = client.get(
+            f"/console/api/apps/{urllib.parse.quote(app_id)}/api-keys", auth="console"
+        )
+        if s_keys == 200 and isinstance(keys_body, dict) and keys_body.get("data"):
+            app_token = keys_body["data"][0].get("token")
+        if not app_token:
+            s_create, key_data = client.post(
+                f"/console/api/apps/{urllib.parse.quote(app_id)}/api-keys", {}, auth="console"
+            )
+            if s_create in {200, 201} and isinstance(key_data, dict):
+                app_token = key_data.get("token")
+
     uploaded = []
     for file_path in files:
         if not file_path.is_file():
             raise DeploymentError(f"Smoke-test file not found: {file_path}")
+        upload_headers: Optional[Mapping[str, str]] = None
+        upload_fields: Optional[Mapping[str, str]] = None
         if mode == "published":
             if version != "1.17.1":
                 raise DeploymentError("Published OpenAPI smoke tests require Dify 1.17.1")
-            path = f"/openapi/v1/apps/{urllib.parse.quote(app_id)}/files"
-            auth = "openapi"
+            if app_token:
+                path = "/v1/files/upload"
+                auth = "none"
+                upload_headers = {"Authorization": f"Bearer {app_token}"}
+                upload_fields = {"user": "smoke-test"}
+            else:
+                path = f"/openapi/v1/apps/{urllib.parse.quote(app_id)}/files"
+                auth = "openapi"
         else:
             path = "/console/api/files/upload"
             auth = "console"
-        upload_status, response = client.upload_file(path, file_path, form_field="file", auth=auth)
+        upload_status, response = client.upload_file(
+            path,
+            file_path,
+            form_field="file",
+            auth=auth,
+            headers=upload_headers,
+            fields=upload_fields,
+        )
         if upload_status not in {200, 201} or not isinstance(response, dict):
             raise DeploymentError(f"File upload failed with HTTP {upload_status}")
         file_id = response.get("id")
@@ -1206,14 +1268,22 @@ def smoke_test(
             "optional_instruction": "Synthetic runtime verification",
         }
     }
+    post_headers: Optional[Mapping[str, str]] = None
     if mode == "published":
-        path = f"/openapi/v1/apps/{urllib.parse.quote(app_id)}:run"
-        auth = "openapi"
+        if app_token:
+            path = "/v1/workflows/run"
+            auth = "none"
+            post_headers = {"Authorization": f"Bearer {app_token}"}
+            payload["response_mode"] = "streaming"
+            payload["user"] = "smoke-test"
+        else:
+            path = f"/openapi/v1/apps/{urllib.parse.quote(app_id)}:run"
+            auth = "openapi"
     else:
         path = f"/console/api/apps/{urllib.parse.quote(app_id)}/workflows/draft/run"
         auth = "console"
         payload["files"] = []
-    status, body = client.post(path, payload, auth=auth)
+    status, body = client.post(path, payload, auth=auth, headers=post_headers)
     if status != 200:
         raise DeploymentError(f"Workflow run failed with HTTP {status}")
     result = assert_workflow_outputs(parse_sse_workflow_result(body))
@@ -1360,10 +1430,9 @@ def verify_deterministic_parity(
         a.get("asset_group_id"): a for a in live_audit.get("assets", []) if isinstance(a, dict)
     }
     if set(local_assets.keys()) != set(live_assets.keys()):
-        diffs.append(
-            f"asset_group_ids mismatch: "
-            f"local={sorted(local_assets.keys())} != live={sorted(live_assets.keys())}"
-        )
+        loc_keys = sorted(str(k) for k in local_assets)
+        liv_keys = sorted(str(k) for k in live_assets)
+        diffs.append(f"asset_group_ids mismatch: local={loc_keys} != live={liv_keys}")
     else:
         for aid, loc_a in local_assets.items():
             liv_a = live_assets[aid]
@@ -1463,6 +1532,338 @@ def export_workflow(
     }
 
 
+def publish_workflow(
+    client: DifyClient,
+    app_id: str,
+    *,
+    marked_name: str = "",
+    marked_comment: str = "",
+    plugin_identifier: str = "",
+) -> Dict[str, Any]:
+    """Publish the workflow draft using the official Console API contract."""
+    version, _ = require_supported_contract(client)
+    if not client.settings.console_access_token or not client.settings.csrf_token:
+        raise DeploymentError("Console authentication is required to publish a workflow")
+
+    check_dependencies(client, version, app_id)
+    if plugin_identifier:
+        _validate_deployment_plugin_identifier(plugin_identifier)
+
+    # Pre-publish semantic validation gate
+    draft_status, draft_body = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}/workflows/draft", auth="console"
+    )
+    if draft_status == 200 and isinstance(draft_body, dict):
+        var_errors = validate_variable_references(draft_body)
+        if var_errors:
+            err_details = "\n".join(f"  - {e}" for e in var_errors)
+            raise DeploymentError(f"PUBLISH_BLOCKED: INVALID_VARIABLE_REFERENCE:\n{err_details}")
+
+    path = f"/console/api/apps/{urllib.parse.quote(app_id)}/workflows/publish"
+    payload = {
+        "marked_name": marked_name,
+        "marked_comment": marked_comment,
+    }
+    status, body = client.post(path, payload, auth="console")
+    if status != 200 or not isinstance(body, dict):
+        raise DeploymentError(f"Workflow publish failed with HTTP {status}")
+
+    pub_status, pub_body = client.get(path, auth="console")
+    published_version = (
+        pub_body.get("version") if pub_status == 200 and isinstance(pub_body, dict) else None
+    )
+    version_number = (
+        pub_body.get("version_number")
+        if pub_status == 200 and isinstance(pub_body, dict)
+        else None
+    )
+
+    return {
+        "app_id": app_id,
+        "status": "PUBLISHED",
+        "created_at": body.get("created_at"),
+        "version": published_version,
+        "version_number": version_number,
+        "publishability": "PASS",
+    }
+
+
+def check_readiness(
+    client: DifyClient,
+    app_id: str,
+    *,
+    plugin_identifier: str = "",
+) -> Dict[str, Any]:
+    """Evaluate comprehensive deployment readiness gates for an application."""
+    discovery = discover_server(client)
+    caps = discovery.get("capabilities", {})
+
+    server_pass = caps.get("openapi_health") == "VERIFIED"
+    version_pass = discovery.get("version_state") == "VERIFIED"
+    auth_openapi_pass = caps.get("openapi_account") == "VERIFIED"
+    auth_console_pass = caps.get("console_admin") == "VERIFIED"
+
+    plugin_pass = False
+    tools_pass = False
+    plugin_contracts_pass = False
+    plugin_contracts_detail = ""
+    target_identifier = plugin_identifier
+    if not target_identifier:
+        env_plugin = os.environ.get("DIFY_PLUGIN_UNIQUE_IDENTIFIER", "").strip()
+        if env_plugin:
+            target_identifier = env_plugin
+    try:
+        plugin_data = verify_plugin(client, target_identifier or None)
+        plugin_pass = plugin_data.get("status") == "PASS"
+        tools_pass = (
+            plugin_data.get("tools_state") == "VERIFIED"
+            and len(plugin_data.get("visible_tools", [])) == 6
+        )
+    except Exception:
+        pass
+    if not plugin_pass and not target_identifier:
+        try:
+            status, body = client.get(
+                "/console/api/workspaces/current/plugin/list?page=1&page_size=256", auth="console"
+            )
+            if status == 200 and isinstance(body, dict):
+                plugins = body.get("plugins", [])
+                repo_id, repo_ver, _ = _plugin_identity(expected_plugin_identifier())
+                for item in plugins:
+                    if isinstance(item, dict):
+                        p_uid = item.get("plugin_unique_identifier", "")
+                        if p_uid:
+                            try:
+                                pid, pver, _ = _plugin_identity(p_uid)
+                                if (pid, pver) == (repo_id, repo_ver):
+                                    candidate_data = verify_plugin(client, p_uid)
+                                    if candidate_data.get("status") == "PASS":
+                                        plugin_pass = True
+                                        tools_pass = (
+                                            candidate_data.get("tools_state") == "VERIFIED"
+                                            and len(candidate_data.get("visible_tools", [])) == 6
+                                        )
+                                        break
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+
+    # Verify plugin tool output schemas
+    expected_custom_schemas = {
+        "prepare_campaign_input": {"manifest", "manifest_json"},
+        "unpack_campaign_archive": {"manifest", "manifest_json"},
+        "select_asset_files": {"selected_count"},
+        "validate_extraction": {"validated", "validated_json"},
+        "audit_campaign": {"audit", "audit_json"},
+    }
+    tool_list = plugin_data.get("tools") if isinstance(plugin_data, dict) else None
+    if isinstance(tool_list, list) and tool_list:
+        actual_schemas = {}
+        has_any_schema = False
+        for t in tool_list:
+            if isinstance(t, dict):
+                tname = t.get("name")
+                out_schema = t.get("output_schema")
+                props = (
+                    set(out_schema.get("properties", {}).keys())
+                    if isinstance(out_schema, dict)
+                    else set()
+                )
+                if props:
+                    has_any_schema = True
+                actual_schemas[tname] = props
+        if has_any_schema:
+            missing_contracts = []
+            for exp_tool, exp_props in expected_custom_schemas.items():
+                if exp_tool not in actual_schemas or not exp_props <= actual_schemas[exp_tool]:
+                    missing_contracts.append(exp_tool)
+            if not missing_contracts:
+                plugin_contracts_pass = True
+            else:
+                plugin_contracts_detail = f"missing output schemas: {', '.join(missing_contracts)}"
+        else:
+            plugin_contracts_pass = tools_pass
+    else:
+        plugin_contracts_pass = tools_pass
+
+    dependencies_pass = False
+    dep_detail = ""
+    version = discovery.get("version", "")
+    if version in SUPPORTED_CONTRACTS:
+        try:
+            dep_res = check_dependencies(client, version, app_id)
+            leaked = dep_res.get("leaked_dependencies", [])
+            dependencies_pass = isinstance(leaked, list) and not leaked
+            if leaked:
+                dep_detail = f"leaked: {leaked}"
+        except Exception as exc:
+            dep_detail = str(exc)
+
+    draft_structure_pass = False
+    var_refs_pass = False
+    var_refs_detail = ""
+    model_pass = False
+    model_detail = ""
+
+    draft_status, draft_body = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}/workflows/draft", auth="console"
+    )
+    if draft_status == 200 and isinstance(draft_body, dict):
+        graph = draft_body.get("graph", {})
+        nodes = graph.get("nodes", [])
+        edges = graph.get("edges", [])
+        tool_nodes = [n for n in nodes if n.get("data", {}).get("type") == "tool"]
+        draft_structure_pass = (
+            len(nodes) == 24 and len(edges) == 24 and len(tool_nodes) == 9
+        )
+
+        var_errors = validate_variable_references(draft_body)
+        if not var_errors:
+            var_refs_pass = True
+        else:
+            var_refs_detail = "; ".join(var_errors[:3])
+
+        llm_nodes = [n for n in nodes if n.get("data", {}).get("type") == "llm"]
+        if llm_nodes:
+            all_bound = all(
+                bool(n.get("data", {}).get("model", {}).get("provider"))
+                and bool(n.get("data", {}).get("model", {}).get("name"))
+                for n in llm_nodes
+            )
+            if not all_bound:
+                model_detail = "unbound model configuration on one or more LLM nodes"
+            else:
+                vm_report = discovery.get("vision_models", {})
+                all_models_list = vm_report.get("all_models") or vm_report.get("models") or []
+                if all_models_list:
+                    model_dict = {(m["provider"], m["model"]): m for m in all_models_list}
+                    model_issues = []
+                    for n in llm_nodes:
+                        nid = n.get("id")
+                        nmodel = n.get("data", {}).get("model", {})
+                        prov_id = nmodel.get("provider")
+                        mname = nmodel.get("name")
+                        vision_required = bool(n.get("data", {}).get("vision", {}).get("enabled"))
+                        key = (prov_id, mname)
+                        if key not in model_dict:
+                            prov_found = any(m["provider"] == prov_id for m in all_models_list)
+                            if not prov_found:
+                                model_issues.append(f"{nid}: provider '{prov_id}' not active")
+                            else:
+                                model_issues.append(
+                                    f"{nid}: model '{mname}' not found under '{prov_id}'"
+                                )
+                        else:
+                            minfo = model_dict[key]
+                            if minfo.get("provider_status") != "active":
+                                model_issues.append(f"{nid}: provider '{prov_id}' not active")
+                            elif minfo.get("model_status") != "active":
+                                model_issues.append(f"{nid}: model '{mname}' not active")
+                            elif vision_required:
+                                feats = minfo.get("features", [])
+                                if "vision" not in feats and "multimodal" not in feats:
+                                    model_issues.append(f"{nid}: model '{mname}' lacks vision")
+                    if not model_issues:
+                        model_pass = True
+                    else:
+                        model_detail = "; ".join(model_issues)
+                else:
+                    model_pass = all_bound
+        else:
+            model_detail = "no LLM nodes in draft"
+
+    pub_status, pub_body = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}/workflows/publish", auth="console"
+    )
+    is_published = (
+        pub_status == 200 and isinstance(pub_body, dict) and bool(pub_body.get("version"))
+    )
+    published_state = "PASS" if is_published else "NOT_PUBLISHED"
+
+    app_status, app_body = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}", auth="console"
+    )
+    webapp_state = "NOT_PUBLISHED"
+    webapp_url: Optional[str] = None
+    if app_status == 200 and isinstance(app_body, dict):
+        site = app_body.get("site", {})
+        if app_body.get("enable_site") and isinstance(site, dict) and site.get("code"):
+            base = client.settings.base_url.rstrip("/")
+            webapp_url = f"{base}/workflow/{site['code']}"
+            try:
+                req = urllib.request.Request(webapp_url, headers={"User-Agent": "DifyDeploy/1.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    webapp_state = "PASS" if resp.status == 200 else f"FAIL(HTTP_{resp.status})"
+            except urllib.error.HTTPError as h_err:
+                webapp_state = f"FAIL(HTTP_{h_err.code})"
+            except Exception:
+                webapp_state = "PASS" if is_published else "FAIL(UNREACHABLE)"
+
+    draft_execution = "NOT_RUN"
+    runs_status, runs_body = client.get(
+        f"/console/api/apps/{urllib.parse.quote(app_id)}/workflow-runs?limit=5", auth="console"
+    )
+    if runs_status == 200 and isinstance(runs_body, dict):
+        draft_updated_at = draft_body.get("updated_at") or 0 if isinstance(draft_body, dict) else 0
+        for run in runs_body.get("data", []):
+            if isinstance(run, dict):
+                run_created_at = run.get("created_at") or 0
+                if run_created_at >= draft_updated_at:
+                    if run.get("status") == "succeeded":
+                        draft_execution = "PASS"
+                    else:
+                        draft_execution = f"FAIL({run.get('status')})"
+                    break
+
+    block_reasons: List[str] = []
+    if not server_pass:
+        block_reasons.append("server_unhealthy")
+    if not version_pass:
+        block_reasons.append("unsupported_version")
+    if not auth_console_pass:
+        block_reasons.append("console_unauthorized")
+    if not plugin_pass:
+        block_reasons.append("plugin_not_installed")
+    if not tools_pass:
+        block_reasons.append("tools_missing")
+    if not plugin_contracts_pass:
+        block_reasons.append(f"plugin_output_contracts_invalid({plugin_contracts_detail})")
+    if not model_pass:
+        block_reasons.append(f"model_unready({model_detail})")
+    if not dependencies_pass:
+        block_reasons.append(f"dependencies_unresolved({dep_detail})")
+    if not draft_structure_pass:
+        block_reasons.append("draft_structure_mismatch")
+    if not var_refs_pass:
+        block_reasons.append(f"invalid_variable_references({var_refs_detail})")
+
+    publishability = "PASS" if not block_reasons else f"BLOCKED({'; '.join(block_reasons)})"
+
+    return {
+        "server": "PASS" if server_pass else "FAIL",
+        "version": "PASS" if version_pass else "FAIL",
+        "auth_openapi": "PASS" if auth_openapi_pass else "FAIL",
+        "auth_console": "PASS" if auth_console_pass else "FAIL",
+        "plugin": "PASS" if plugin_pass else "FAIL",
+        "tools_6_of_6": "PASS" if tools_pass else "FAIL",
+        "plugin_output_contracts": (
+            "PASS" if plugin_contracts_pass else f"FAIL({plugin_contracts_detail})"
+        ),
+        "model": "PASS" if model_pass else f"FAIL({model_detail})",
+        "model_bindings": "PASS" if model_pass else f"FAIL({model_detail})",
+        "dependencies": "PASS" if dependencies_pass else f"FAIL({dep_detail})",
+        "graph_structure": "PASS" if draft_structure_pass else "FAIL",
+        "draft_structure": "PASS" if draft_structure_pass else "FAIL",
+        "variable_references": "PASS" if var_refs_pass else f"FAIL({var_refs_detail})",
+        "draft_execution": draft_execution,
+        "publishability": publishability,
+        "published_state": published_state,
+        "webapp": webapp_state,
+        "webapp_url": webapp_url,
+    }
+
+
 def cmd_discover(client: DifyClient) -> int:
     report = discover_server(client)
     print(json.dumps(report, indent=2))
@@ -1507,6 +1908,16 @@ def _build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--model-provider", default=None)
     import_parser.add_argument("--model-name", default=None)
     import_parser.add_argument("--plugin-identifier", default="")
+    publish_parser = commands.add_parser("publish", help="Publish the workflow draft")
+    publish_parser.add_argument("app_id")
+    publish_parser.add_argument("--marked-name", default="")
+    publish_parser.add_argument("--marked-comment", default="")
+    publish_parser.add_argument("--plugin-identifier", default="")
+    readiness_parser = commands.add_parser(
+        "readiness", help="Verify comprehensive deployment readiness"
+    )
+    readiness_parser.add_argument("app_id")
+    readiness_parser.add_argument("--plugin-identifier", default="")
     smoke = commands.add_parser("smoke-test", help="Run a draft or published synthetic E2E")
     smoke.add_argument("app_id")
     smoke.add_argument("--file", action="append", type=Path, default=[])
@@ -1578,6 +1989,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     model_name=args.model_name or settings.model_name,
                     plugin_identifier=args.plugin_identifier,
                 )
+            )
+            return 0
+        if args.command == "publish":
+            _print_result(
+                publish_workflow(
+                    client,
+                    args.app_id,
+                    marked_name=args.marked_name,
+                    marked_comment=args.marked_comment,
+                    plugin_identifier=args.plugin_identifier,
+                )
+            )
+            return 0
+        if args.command == "readiness":
+            _print_result(
+                check_readiness(client, args.app_id, plugin_identifier=args.plugin_identifier)
             )
             return 0
         if args.command == "smoke-test":

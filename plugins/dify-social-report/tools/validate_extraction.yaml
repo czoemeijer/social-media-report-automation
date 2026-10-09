@@ -17,6 +17,15 @@ parameters:
       en_US: Structured JSON from the per-asset vision extraction step.
     llm_description: Object matching the extracted_asset schema or containing an assets array.
     form: llm
+output_schema:
+  type: object
+  properties:
+    validated:
+      type: object
+      description: Validated and normalized campaign JSON object
+    validated_json:
+      type: string
+      description: Compact JSON string of validated extraction output
 extra:
   python:
     source: tools/validate_extraction.py

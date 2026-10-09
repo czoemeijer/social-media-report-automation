@@ -17,6 +17,15 @@ parameters:
       en_US: Validated canonical extraction output for all grouped campaign assets.
     llm_description: Object containing the validated assets array.
     form: llm
+output_schema:
+  type: object
+  properties:
+    audit:
+      type: object
+      description: Deterministic audit calculation results and QA findings
+    audit_json:
+      type: string
+      description: Compact JSON string representation of the audit result
 extra:
   python:
     source: tools/audit_campaign.py
